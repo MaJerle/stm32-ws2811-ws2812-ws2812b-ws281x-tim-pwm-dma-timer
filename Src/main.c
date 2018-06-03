@@ -80,7 +80,6 @@ uint8_t     ws_start_reset_pulse(uint8_t num);
 int
 main(void) {
     size_t i;
-    uint32_t rgb;
     volatile uint32_t timeout;
     
     /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
@@ -95,22 +94,6 @@ main(void) {
     MX_TIM2_Init();
 
     /* At this point, timer is ready and CC1 is enabled */
-    
-//    LL_TIM_EnableCounter(TIM2);                 /* Start timer counter */
-
-//    LL_DMA_SetMemoryAddress(DMA1, LL_DMA_STREAM_5, (uint32_t)pwm_data);
-//    LL_DMA_SetDataLength(DMA1, LL_DMA_STREAM_5, sizeof(pwm_data) / sizeof(pwm_data[0]));
-//    LL_DMA_EnableStream(DMA1, LL_DMA_STREAM_5);
-    
-//    rgb = 0;
-//    while (1) {
-//        ws_set_color_all_rgb(rgb);
-//        ws_update(1);
-//        rgb += 0x213;
-//        if (rgb > 0xFFFFFF) {
-//            rgb = 0;
-//        }
-//    }
     
     /* Infinite loop */
     while (1) {

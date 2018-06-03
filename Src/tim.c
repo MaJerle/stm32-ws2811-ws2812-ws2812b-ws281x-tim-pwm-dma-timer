@@ -49,8 +49,6 @@ uint32_t pwm_data[1000];
 /* TIM2 init function */
 void
 MX_TIM2_Init(void) {
-    uint32_t i;
-    
     LL_TIM_InitTypeDef TIM_InitStruct;
     LL_TIM_OC_InitTypeDef TIM_OC_InitStruct;
 
