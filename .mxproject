@@ -1,0 +1,14 @@
+[PreviousGenFiles]
+HeaderPath=D:/_ELECTRONICS/WS2812b_LED_LL/Inc
+HeaderFiles=gpio.h;dma.h;tim.h;stm32f4xx_it.h;stm32_assert.h;stm32f4xx_hal_conf.h;main.h;
+SourcePath=D:/_ELECTRONICS/WS2812b_LED_LL/Src
+SourceFiles=gpio.c;dma.c;tim.c;stm32f4xx_it.c;main.c;
+
+[PreviousLibFiles]
+LibFiles=Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_gpio.h;Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_exti.h;Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_system.h;Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_rcc.h;Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_dma.h;Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_tim.h;Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_bus.h;Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_cortex.h;Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_utils.h;Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_pwr.h;Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_dmamux.h;Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_gpio.c;Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_exti.c;Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_dma.c;Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_tim.c;Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_rcc.c;Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_utils.c;Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f401xe.h;Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f4xx.h;Drivers/CMSIS/Device/ST/STM32F4xx/Include/system_stm32f4xx.h;Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c;Drivers/CMSIS/Include/arm_common_tables.h;Drivers/CMSIS/Include/arm_const_structs.h;Drivers/CMSIS/Include/arm_math.h;Drivers/CMSIS/Include/cmsis_armcc.h;Drivers/CMSIS/Include/cmsis_armcc_V6.h;Drivers/CMSIS/Include/cmsis_gcc.h;Drivers/CMSIS/Include/core_cm0.h;Drivers/CMSIS/Include/core_cm0plus.h;Drivers/CMSIS/Include/core_cm3.h;Drivers/CMSIS/Include/core_cm4.h;Drivers/CMSIS/Include/core_cm7.h;Drivers/CMSIS/Include/core_cmFunc.h;Drivers/CMSIS/Include/core_cmInstr.h;Drivers/CMSIS/Include/core_cmSimd.h;Drivers/CMSIS/Include/core_sc000.h;Drivers/CMSIS/Include/core_sc300.h;
+
+[PreviousUsedKeilFiles]
+SourceFiles=..\Src\main.c;..\Src\gpio.c;..\Src\dma.c;..\Src\tim.c;..\Src\stm32f4xx_it.c;../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_gpio.c;../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_exti.c;../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_dma.c;../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_tim.c;../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_rcc.c;../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_utils.c;../\Src/system_stm32f4xx.c;../Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c;null;
+HeaderPath=..\Drivers\STM32F4xx_HAL_Driver\Inc;..\Drivers\CMSIS\Device\ST\STM32F4xx\Include;..\Drivers\CMSIS\Include;..\Inc;
+CDefines=USE_FULL_LL_DRIVER;
+
