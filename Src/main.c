@@ -38,25 +38,36 @@
   */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "dma.h"
-#include "tim.h"
-#include "gpio.h"
 #include "string.h"
 
 /* Private function prototypes -----------------------------------------------*/
 static void LL_Init(void);
 void SystemClock_Config(void);
 
-#define WS_LEDS                         28      /*!< Number of leds in a strip row */
+#define LED_CFG_USE_RGBW                1       /*!< Set to 1 to use RGBW leds.
+                                                    Set to 0 to use WS2812B leds */
 
-uint8_t leds_colors[3 * WS_LEDS];               /*!< Declare array of 3x number of leds (R, G, B colors) */
+#define LED_CFG_LEDS_CNT                8       /*!< Number of leds in a strip row */
+
+#if LED_CFG_USE_RGBW
+#define LED_CFG_BYTES_PER_LED           4
+#else /* LED_CFG_USE_RGBW */
+#define LED_CFG_BYTES_PER_LED           3
+#endif /* !LED_CFG_USE_RGBW */
+
+#define LED_CFG_RAW_BYTES_PER_LED       (LED_CFG_BYTES_PER_LED * 8)
+
+/**
+ * \brief           Array of 4x (or 3x) number of leds (R, G, B[, W] colors)
+ */
+uint8_t leds_colors[LED_CFG_BYTES_PER_LED * LED_CFG_LEDS_CNT];
 
 /**
  * \brief           Temporary array for single LED with extracted PWM duty cycles
  * 
- * We need 24 bytes for PWM setup to send all bits.
+ * We need LED_CFG_RAW_BYTES_PER_LED bytes for PWM setup to send all bits.
  * Before we can send data for first led, we have to send reset pulse, which must be 50us long.
- * PWM frequency is 800kHz, to achieve 50us, we need to send 40 pulses with 0 duty cycle = make array size MAX(24, 40)
+ * PWM frequency is 800kHz, to achieve 50us, we need to send 40 pulses with 0 duty cycle = make array size MAX(LED_CFG_RAW_BYTES_PER_LED, 40)
  */
 uint32_t tmp_led_data[48];
 
@@ -64,15 +75,24 @@ uint8_t is_reset_pulse;                         /*!< Status if we are sending re
 volatile uint8_t is_updating;                   /*!< Is updating in progress? */
 uint32_t current_led;                           /*!< Current LED number we are sending */
 
-uint8_t     ws_update(uint8_t block);
+void        led_init(void);
 
-uint8_t     ws_set_color(uint32_t index, uint8_t r, uint8_t g, uint8_t b);
-uint8_t     ws_set_color_rgb(uint32_t index, uint32_t rgb);
-uint8_t     ws_set_color_all(uint8_t r, uint8_t g, uint8_t b);
-uint8_t     ws_set_color_all_rgb(uint32_t rgb);
+uint8_t     led_update(uint8_t block);
 
-uint8_t     ws_is_update_finished(void);
-uint8_t     ws_start_reset_pulse(uint8_t num);
+#if LED_CFG_USE_RGBW
+uint8_t     led_set_color(uint32_t index, uint8_t r, uint8_t g, uint8_t b, uint8_t w);
+uint8_t     led_set_color_all(uint8_t r, uint8_t g, uint8_t b, uint8_t w);
+uint8_t     led_set_color_rgbw(uint32_t index, uint32_t rgbw);
+uint8_t     led_set_color_all_rgbw(uint32_t rgbw);
+#else /* LED_CFG_USE_RGBW */
+uint8_t     led_set_color(size_t index, uint8_t r, uint8_t g, uint8_t b);
+uint8_t     led_set_color_all(uint8_t r, uint8_t g, uint8_t b);
+uint8_t     led_set_color_rgb(size_t index, uint32_t rgb);
+uint8_t     led_set_color_all_rgb(uint32_t rgb);
+#endif /* !LED_CFG_USE_RGBW */
+
+uint8_t     led_is_update_finished(void);
+uint8_t     led_start_reset_pulse(uint8_t num);
 
 /**
  * \brief           The application entry point.
@@ -88,29 +108,103 @@ main(void) {
     /* Configure the system clock */
     SystemClock_Config();
 
-    /* Initialize all configured peripherals */
-    MX_GPIO_Init();
-    MX_DMA_Init();
-    MX_TIM2_Init();
-
     /* At this point, timer is ready and CC1 is enabled */
+    
+    led_init();
+    led_set_color_all(0x01, 0x00, 0x00, 0x00);   led_update(1);
     
     /* Infinite loop */
     while (1) {
-        for (i = 0; i < WS_LEDS; i++) {
-            ws_set_color((i + 0) % WS_LEDS, 0x1F, 0, 0);
-            ws_set_color((i + 1) % WS_LEDS, 0x1F, 0, 0);
-            ws_set_color((i + 2) % WS_LEDS, 0, 0x1F, 0);
-            ws_set_color((i + 3) % WS_LEDS, 0, 0x1F, 0);
-            ws_set_color((i + 4) % WS_LEDS, 0, 0, 0x1F);
-            ws_set_color((i + 5) % WS_LEDS, 0, 0, 0x1F);
-            ws_update(1);
-            ws_set_color_all(0, 0, 0);
+        for (i = 0; i < LED_CFG_LEDS_CNT; i++) {
+            led_set_color((i + 0) % LED_CFG_LEDS_CNT, 0x1F, 0, 0, 0);
+            led_set_color((i + 1) % LED_CFG_LEDS_CNT, 0x1F, 0, 0, 0);
+            led_set_color((i + 2) % LED_CFG_LEDS_CNT, 0, 0x1F, 0, 0);
+            led_set_color((i + 3) % LED_CFG_LEDS_CNT, 0, 0x1F, 0, 0);
+            led_set_color((i + 4) % LED_CFG_LEDS_CNT, 0, 0, 0x1F, 0);
+            led_set_color((i + 5) % LED_CFG_LEDS_CNT, 0, 0, 0x1F, 0);
+            led_set_color((i + 6) % LED_CFG_LEDS_CNT, 0, 0, 0, 0x1F);
+            led_set_color((i + 7) % LED_CFG_LEDS_CNT, 0, 0, 0, 0x1F);
+            led_update(1);
+            led_set_color_all(0, 0, 0, 0);
             
             timeout = 0x7FFFF;
             while (timeout--);
         }
+        
+        //led_set_color_all(0, 0, 0, 0);  led_update(1);   timeout = 0x3FFFFF;  while (timeout--);
     }
+}
+
+void
+led_init(void) {
+    LL_TIM_InitTypeDef TIM_InitStruct;
+    LL_TIM_OC_InitTypeDef TIM_OC_InitStruct;
+    LL_GPIO_InitTypeDef GPIO_InitStruct;
+    
+    /* Peripheral clock enable */
+    LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2);
+    LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
+    LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_DMA1);
+
+    /* TIM2 DMA Init */
+
+    /* TIM2_CH2 Init */
+    LL_DMA_SetChannelSelection(DMA1, LL_DMA_STREAM_6, LL_DMA_CHANNEL_3);
+    LL_DMA_SetDataTransferDirection(DMA1, LL_DMA_STREAM_6, LL_DMA_DIRECTION_MEMORY_TO_PERIPH);
+    LL_DMA_SetStreamPriorityLevel(DMA1, LL_DMA_STREAM_6, LL_DMA_PRIORITY_LOW);
+    LL_DMA_SetMode(DMA1, LL_DMA_STREAM_6, LL_DMA_MODE_CIRCULAR);
+    LL_DMA_SetPeriphIncMode(DMA1, LL_DMA_STREAM_6, LL_DMA_PERIPH_NOINCREMENT);
+    LL_DMA_SetMemoryIncMode(DMA1, LL_DMA_STREAM_6, LL_DMA_MEMORY_INCREMENT);
+    LL_DMA_SetPeriphSize(DMA1, LL_DMA_STREAM_6, LL_DMA_PDATAALIGN_WORD);
+    LL_DMA_SetMemorySize(DMA1, LL_DMA_STREAM_6, LL_DMA_MDATAALIGN_WORD);
+    LL_DMA_DisableFifoMode(DMA1, LL_DMA_STREAM_6);
+    
+    /* Added by user */
+    LL_DMA_SetPeriphAddress(DMA1, LL_DMA_STREAM_6, (uint32_t)&TIM2->CCR2);
+    LL_DMA_EnableIT_TC(DMA1, LL_DMA_STREAM_6);
+    LL_DMA_EnableIT_HT(DMA1, LL_DMA_STREAM_6);
+
+    /* TIM2 interrupt Init */
+    NVIC_SetPriority(TIM2_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
+    NVIC_EnableIRQ(TIM2_IRQn);
+
+    TIM_InitStruct.Prescaler = 0;
+    TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
+    TIM_InitStruct.Autoreload = 104;
+    TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
+    LL_TIM_Init(TIM2, &TIM_InitStruct);
+    LL_TIM_OC_EnablePreload(TIM2, LL_TIM_CHANNEL_CH2);
+
+    TIM_OC_InitStruct.OCMode = LL_TIM_OCMODE_PWM1;
+    TIM_OC_InitStruct.OCState = LL_TIM_OCSTATE_DISABLE;
+    TIM_OC_InitStruct.OCNState = LL_TIM_OCSTATE_DISABLE;
+    TIM_OC_InitStruct.CompareValue = 0;
+    TIM_OC_InitStruct.OCPolarity = LL_TIM_OCPOLARITY_HIGH;
+    LL_TIM_OC_Init(TIM2, LL_TIM_CHANNEL_CH2, &TIM_OC_InitStruct);
+    LL_TIM_OC_DisableFast(TIM2, LL_TIM_CHANNEL_CH2);
+    LL_TIM_SetTriggerOutput(TIM2, LL_TIM_TRGO_RESET);
+    LL_TIM_DisableMasterSlaveMode(TIM2);
+
+    /**
+     * TIM2 GPIO Configuration    
+     * PB3     ------> TIM2_CH2
+     */
+    GPIO_InitStruct.Pin = LL_GPIO_PIN_3;
+    GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
+    GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+    GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+    GPIO_InitStruct.Alternate = LL_GPIO_AF_1;
+    LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+    
+    LL_TIM_OC_SetCompareCH2(TIM2, LL_TIM_GetAutoReload(TIM2) / 20 - 1); /* Set channel 1 compare register */
+    LL_TIM_CC_EnableChannel(TIM2, LL_TIM_CHANNEL_CH2);  /* Enable output on channel */
+    LL_TIM_EnableDMAReq_CC2(TIM2);              /* Enable DMA requests on channel 1 */
+
+    /* DMA interrupt init */
+    /* DMA1_Stream6_IRQn interrupt configuration */
+    NVIC_SetPriority(DMA1_Stream6_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
+    NVIC_EnableIRQ(DMA1_Stream6_IRQn);
 }
 
 /**
@@ -120,45 +214,73 @@ main(void) {
  * \return          `1` on success, `0` otherwise
  */
 uint8_t
-ws_set_color(uint32_t index, uint8_t r, uint8_t g, uint8_t b) {
-    if (index < WS_LEDS) {
-        leds_colors[index * 3 + 0] = r;
-        leds_colors[index * 3 + 1] = g;
-        leds_colors[index * 3 + 2] = b;
+led_set_color(size_t index, uint8_t r, uint8_t g, uint8_t b
+#if LED_CFG_USE_RGBW
+, uint8_t w
+#endif /* LED_CFG_USE_RGBW */
+) {
+    if (index < LED_CFG_LEDS_CNT) {
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 0] = r;
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 1] = g;
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 2] = b;
+#if LED_CFG_USE_RGBW
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 3] = w;
+#endif /* LED_CFG_USE_RGBW */
         return 1;
     }
     return 0;
 }
 
 uint8_t
-ws_set_color_rgb(uint32_t index, uint32_t rgb) {
-    if (index < WS_LEDS) {
-        leds_colors[index * 3 + 0] = (rgb >> 16) & 0xFF;
-        leds_colors[index * 3 + 1] = (rgb >> 8) & 0xFF;
-        leds_colors[index * 3 + 2] = rgb & 0xFF;
-        return 1;
-    }
-    return 0;
-}
-
-uint8_t
-ws_set_color_all(uint8_t r, uint8_t g, uint8_t b) {
+led_set_color_all(uint8_t r, uint8_t g, uint8_t b
+#if LED_CFG_USE_RGBW
+, uint8_t w
+#endif /* LED_CFG_USE_RGBW */
+) {
     uint32_t index;
-    for (index = 0; index < WS_LEDS; index++) {
-        leds_colors[index * 3 + 0] = r;
-        leds_colors[index * 3 + 1] = g;
-        leds_colors[index * 3 + 2] = b;
+    for (index = 0; index < LED_CFG_LEDS_CNT; index++) {
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 0] = r;
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 1] = g;
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 2] = b;
+#if LED_CFG_USE_RGBW
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 3] = w;
+#endif /* LED_CFG_USE_RGBW */
     }
     return 1;
 }
 
 uint8_t
-ws_set_color_all_rgb(uint32_t rgb) {
-    uint32_t index;
-    for (index = 0; index < WS_LEDS; index++) {
-        leds_colors[index * 3 + 0] = (rgb >> 16) & 0xFF;
-        leds_colors[index * 3 + 1] = (rgb >> 8) & 0xFF;
-        leds_colors[index * 3 + 2] = rgb & 0xFF;
+#if LED_CFG_USE_RGBW
+led_set_color_rgbw(uint32_t index, uint32_t rgbw) {
+#else /* LED_CFG_USE_RGBW */
+led_set_color_rgb(uint32_t index, uint32_t rgbw) {
+#endif /* !LED_CFG_USE_RGBW */
+    if (index < LED_CFG_LEDS_CNT) {
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 0] = (rgbw >> 24) & 0xFF;
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 1] = (rgbw >> 16) & 0xFF;
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 2] = (rgbw >> 8) & 0xFF;
+#if LED_CFG_USE_RGBW
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 3] = (rgbw >> 0) & 0xFF;
+#endif /* LED_CFG_USE_RGBW */
+        return 1;
+    }
+    return 0;
+}
+
+uint8_t
+#if LED_CFG_USE_RGBW
+led_set_color_all_rgbw(uint32_t rgbw) {
+#else /* LED_CFG_USE_RGBW */
+led_set_color_all_rgb(uint32_t rgbw) {
+#endif /* !LED_CFG_USE_RGBW */
+    size_t index;
+    for (index = 0; index < LED_CFG_LEDS_CNT; index++) {
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 0] = (rgbw >> 24) & 0xFF;
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 1] = (rgbw >> 16) & 0xFF;
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 2] = (rgbw >> 8) & 0xFF;
+#if LED_CFG_USE_RGBW
+        leds_colors[index * LED_CFG_BYTES_PER_LED + 3] = (rgbw >> 0) & 0xFF;
+#endif /* LED_CFG_USE_RGBW */
     }
     return 1;
 }
@@ -168,7 +290,7 @@ ws_set_color_all_rgb(uint32_t rgb) {
  * \return          `1` if not updating, `0` if updating process is in progress
  */
 uint8_t
-ws_is_update_finished(void) {
+led_is_update_finished(void) {
     return !is_updating;                        /* Return updating flag status */
 }
 
@@ -178,34 +300,37 @@ ws_is_update_finished(void) {
  * \return          `1` if update started, `0` otherwise
  */
 uint8_t
-ws_update(uint8_t block) {
+led_update(uint8_t block) {
     if (is_updating) {                          /* Check if update in progress already */
         return 0;
     }
     is_updating = 1;                            /* We are now updating */
 
-    ws_start_reset_pulse(1);                    /* Start reset pulse */
+    led_start_reset_pulse(1);                   /* Start reset pulse */
     if (block) {
-        while (!ws_is_update_finished());       /* Wait to finish */
+        while (!led_is_update_finished());      /* Wait to finish */
     }
     return 1;
 }
 
 /**
  * \brief           Prepares data from memory for PWM output for timer
- * \note            Memory is in format R,G,B, while PWM must be configured in G,R,B
+ * \note            Memory is in format R,G,B, while PWM must be configured in G,R,B[,W]
  * \param[in]       ledx: LED index to set the color
- * \param[out]      ptr: Output array with at least 24-words of memory
+ * \param[out]      ptr: Output array with at least LED_CFG_RAW_BYTES_PER_LED-words of memory
  */
 static uint8_t
-ws_fill_led_pwm_data(uint32_t ledx, uint32_t* ptr) {
+led_fill_led_pwm_data(size_t ledx, uint32_t* ptr) {
     size_t i;
     
-    if (ledx < WS_LEDS) {
+    if (ledx < LED_CFG_LEDS_CNT) {
         for (i = 0; i < 8; i++) {
-            ptr[i] =        (leds_colors[3 * ledx + 1] & (1 << (7 - i))) ? (2 * TIM2->ARR / 3) : (TIM2->ARR / 3);
-            ptr[8 + i] =    (leds_colors[3 * ledx + 0] & (1 << (7 - i))) ? (2 * TIM2->ARR / 3) : (TIM2->ARR / 3);
-            ptr[16 + i] =   (leds_colors[3 * ledx + 2] & (1 << (7 - i))) ? (2 * TIM2->ARR / 3) : (TIM2->ARR / 3);
+            ptr[i] =        (leds_colors[LED_CFG_BYTES_PER_LED * ledx + 1] & (1 << (7 - i))) ? (2 * TIM2->ARR / 3) : (TIM2->ARR / 3);
+            ptr[8 + i] =    (leds_colors[LED_CFG_BYTES_PER_LED * ledx + 0] & (1 << (7 - i))) ? (2 * TIM2->ARR / 3) : (TIM2->ARR / 3);
+            ptr[16 + i] =   (leds_colors[LED_CFG_BYTES_PER_LED * ledx + 2] & (1 << (7 - i))) ? (2 * TIM2->ARR / 3) : (TIM2->ARR / 3);
+#if LED_CFG_USE_RGBW
+            ptr[24 + i] =   (leds_colors[LED_CFG_BYTES_PER_LED * ledx + 3] & (1 << (7 - i))) ? (2 * TIM2->ARR / 3) : (TIM2->ARR / 3);
+#endif /* LED_CFG_USE_RGBW */
         }
         return 1;
     }
@@ -219,29 +344,25 @@ ws_fill_led_pwm_data(uint32_t ledx, uint32_t* ptr) {
  * \note            TC = Transfer-Complete event, called at the end of block
  * \note            HT = Half-Transfer-Complete event, called in the middle of elements transfered by DMA
  *                  If block is 48 elements (our case),
- *                      HT is called when first 24 elements are transfered,
- *                      TC is called when second 24 elements are transfered.
+ *                      HT is called when first LED_CFG_RAW_BYTES_PER_LED elements are transfered,
+ *                      TC is called when second LED_CFG_RAW_BYTES_PER_LED elements are transfered.
  *
  * \note            This function must be called from DMA interrupt
  */
 static void
-ws_update_sequence(uint8_t tc) {    
+led_update_sequence(uint8_t tc) {    
     tc = !!tc;                                  /* Convert to 1 or 0 value only */
     
-    /* 
-     * Check for reset pulse at the end of PWM stream
-     */
+    /* Check for reset pulse at the end of PWM stream */
     if (is_reset_pulse == 2) {                  /* Check for reset pulse at the end */
-        LL_TIM_CC_DisableChannel(TIM2, LL_TIM_CHANNEL_CH1); /* Disable channel */
-        LL_DMA_DisableStream(DMA1, LL_DMA_STREAM_5);    /* Disable DMA stream */
+        LL_TIM_CC_DisableChannel(TIM2, LL_TIM_CHANNEL_CH2); /* Disable channel */
+        LL_DMA_DisableStream(DMA1, LL_DMA_STREAM_6);    /* Disable DMA stream */
         
         is_updating = 0;                        /* We are not updating anymore */
         return;
     }
     
-    /*
-     * Check for reset pulse on beginning of PWM stream
-     */
+    /* Check for reset pulse on beginning of PWM stream */
     if (is_reset_pulse == 1) {                  /* Check if we finished with reset pulse */
         /*
          * When reset pulse is active, we have to wait full DMA response,
@@ -252,8 +373,8 @@ ws_update_sequence(uint8_t tc) {
         }
         
         /* Disable timer output and disable DMA stream */
-        LL_TIM_CC_DisableChannel(TIM2, LL_TIM_CHANNEL_CH1); /* Disable channel */
-        LL_DMA_DisableStream(DMA1, LL_DMA_STREAM_5);
+        LL_TIM_CC_DisableChannel(TIM2, LL_TIM_CHANNEL_CH2); /* Disable channel */
+        LL_DMA_DisableStream(DMA1, LL_DMA_STREAM_6);
         
         is_reset_pulse = 0;                     /* Not in reset pulse anymore */
         current_led = 0;                        /* Reset current led */
@@ -265,11 +386,11 @@ ws_update_sequence(uint8_t tc) {
         current_led++;                          /* Go to next LED */
     }
     
-    /**
+    /*
      * This part is used to prepare data for "next" led,
      * for which update will start once current transfer stops in circular mode
      */
-    if (current_led < WS_LEDS) {
+    if (current_led < LED_CFG_LEDS_CNT) {
         /*
          * If we are preparing data for first time (current_led == 0)
          * or if there was no TC event (it was HT):
@@ -280,9 +401,9 @@ ws_update_sequence(uint8_t tc) {
          * In other case (TC = 1)
          */
         if (current_led == 0 || !tc) {
-            ws_fill_led_pwm_data(current_led, &tmp_led_data[0]);
+            led_fill_led_pwm_data(current_led, &tmp_led_data[0]);
         } else {
-            ws_fill_led_pwm_data(current_led, &tmp_led_data[24]);
+            led_fill_led_pwm_data(current_led, &tmp_led_data[LED_CFG_RAW_BYTES_PER_LED]);
         }
         
         /*
@@ -294,19 +415,19 @@ ws_update_sequence(uint8_t tc) {
          */
         if (current_led == 0) {
             current_led++;                      /* Go to next LED */
-            ws_fill_led_pwm_data(current_led, &tmp_led_data[24]);   /* Prepare second LED too */
+            led_fill_led_pwm_data(current_led, &tmp_led_data[LED_CFG_RAW_BYTES_PER_LED]);   /* Prepare second LED too */
             
             /* Set DMA to circular mode and set length to 48 elements for 2 leds */
-            LL_DMA_SetMode(DMA1, LL_DMA_STREAM_5, LL_DMA_MODE_CIRCULAR);  /* Go to non-circular mode */
-            LL_DMA_SetMemoryAddress(DMA1, LL_DMA_STREAM_5, (uint32_t)tmp_led_data);
-            LL_DMA_SetDataLength(DMA1, LL_DMA_STREAM_5, 48);
+            LL_DMA_SetMode(DMA1, LL_DMA_STREAM_6, LL_DMA_MODE_CIRCULAR);  /* Go to non-circular mode */
+            LL_DMA_SetMemoryAddress(DMA1, LL_DMA_STREAM_6, (uint32_t)tmp_led_data);
+            LL_DMA_SetDataLength(DMA1, LL_DMA_STREAM_6, 2 * LED_CFG_RAW_BYTES_PER_LED);
             
             /* Clear DMA flags */
-            LL_DMA_ClearFlag_TC5(DMA1);
-            LL_DMA_ClearFlag_HT5(DMA1);
-            LL_DMA_EnableIT_HT(DMA1, LL_DMA_STREAM_5);
-            LL_DMA_EnableStream(DMA1, LL_DMA_STREAM_5);
-            LL_TIM_CC_EnableChannel(TIM2, LL_TIM_CHANNEL_CH1);  /* Enable channel */
+            LL_DMA_ClearFlag_TC6(DMA1);
+            LL_DMA_ClearFlag_HT6(DMA1);
+            LL_DMA_EnableIT_HT(DMA1, LL_DMA_STREAM_6);
+            LL_DMA_EnableStream(DMA1, LL_DMA_STREAM_6);
+            LL_TIM_CC_EnableChannel(TIM2, LL_TIM_CHANNEL_CH2);  /* Enable channel */
         }
         
     /*
@@ -315,12 +436,12 @@ ws_update_sequence(uint8_t tc) {
      *  - If TC event is enabled and we have EVEN number of LEDS (2, 4, 6, ...)
      *  - If HT event is enabled and we have ODD number of LEDS (1, 3, 5, ...)
      */
-    } else if ((!tc && (WS_LEDS & 0x01)) || (tc && !(WS_LEDS & 0x01))) {
-        LL_TIM_CC_DisableChannel(TIM2, LL_TIM_CHANNEL_CH1); /* Disable channel */
-        LL_DMA_DisableStream(DMA1, LL_DMA_STREAM_5);
+    } else if ((!tc && (LED_CFG_LEDS_CNT & 0x01)) || (tc && !(LED_CFG_LEDS_CNT & 0x01))) {
+        LL_TIM_CC_DisableChannel(TIM2, LL_TIM_CHANNEL_CH2); /* Disable channel */
+        LL_DMA_DisableStream(DMA1, LL_DMA_STREAM_6);
         
         /* It is time to send final reset pulse, 50us at least */
-        ws_start_reset_pulse(2);                /* Start reset pulse at the end */
+        led_start_reset_pulse(2);                /* Start reset pulse at the end */
     }
 }
 
@@ -329,7 +450,7 @@ ws_update_sequence(uint8_t tc) {
  * \param[in]       num: Number indicating pulse is for beginning (1) or end (2) of PWM data stream
  */
 static uint8_t
-ws_start_reset_pulse(uint8_t num) {
+led_start_reset_pulse(uint8_t num) {
     is_reset_pulse = num;                       /* Set reset pulse flag */
     
     memset(tmp_led_data, 0, sizeof(tmp_led_data));   /* Set all bytes to 0 to achieve 50us pulse */
@@ -340,18 +461,18 @@ ws_start_reset_pulse(uint8_t num) {
     
     /* Set DMA to normal mode, set memory to beginning of data and length to 40 elements */
     /* 800kHz PWM x 40 samples = ~50us pulse low */
-    LL_DMA_SetMode(DMA1, LL_DMA_STREAM_5, LL_DMA_MODE_NORMAL);  /* Go to non-circular mode */
-    LL_DMA_SetMemoryAddress(DMA1, LL_DMA_STREAM_5, (uint32_t)tmp_led_data);
-    LL_DMA_SetDataLength(DMA1, LL_DMA_STREAM_5, 40);
+    LL_DMA_SetMode(DMA1, LL_DMA_STREAM_6, LL_DMA_MODE_NORMAL);  /* Go to non-circular mode */
+    LL_DMA_SetMemoryAddress(DMA1, LL_DMA_STREAM_6, (uint32_t)tmp_led_data);
+    LL_DMA_SetDataLength(DMA1, LL_DMA_STREAM_6, 40);
 
     /* Reset DMA configuration and enable stream */
-    LL_DMA_ClearFlag_TC5(DMA1);
-    LL_DMA_ClearFlag_HT5(DMA1);
-    LL_DMA_DisableIT_HT(DMA1, LL_DMA_STREAM_5);
-    LL_DMA_EnableIT_TC(DMA1, LL_DMA_STREAM_5);
-    LL_DMA_EnableStream(DMA1, LL_DMA_STREAM_5);
+    LL_DMA_ClearFlag_TC6(DMA1);
+    LL_DMA_ClearFlag_HT6(DMA1);
+    LL_DMA_DisableIT_HT(DMA1, LL_DMA_STREAM_6);
+    LL_DMA_EnableIT_TC(DMA1, LL_DMA_STREAM_6);
+    LL_DMA_EnableStream(DMA1, LL_DMA_STREAM_6);
     
-    LL_TIM_CC_EnableChannel(TIM2, LL_TIM_CHANNEL_CH1);  /* Enable channel for timer */
+    LL_TIM_CC_EnableChannel(TIM2, LL_TIM_CHANNEL_CH2);  /* Enable channel for timer */
     LL_TIM_EnableCounter(TIM2);                 /* Start timer counter */
     
     return 1;
@@ -361,13 +482,13 @@ ws_start_reset_pulse(uint8_t num) {
  * \brief           DMA1 Stream5 global interrupt
  */
 void
-DMA1_Stream5_IRQHandler(void) {
-    if (LL_DMA_IsActiveFlag_HT5(DMA1)) {        /* Check for HT event */
-        LL_DMA_ClearFlag_HT5(DMA1);
-        ws_update_sequence(0);                  /* Call update sequence as HT event */
-    } else if (LL_DMA_IsActiveFlag_TC5(DMA1)) { /* Check for TC event */
-        LL_DMA_ClearFlag_TC5(DMA1);
-        ws_update_sequence(1);                  /* Call update sequence as TC event */
+DMA1_Stream6_IRQHandler(void) {
+    if (LL_DMA_IsActiveFlag_HT6(DMA1)) {        /* Check for HT event */
+        LL_DMA_ClearFlag_HT6(DMA1);
+        led_update_sequence(0);                 /* Call update sequence as HT event */
+    } else if (LL_DMA_IsActiveFlag_TC6(DMA1)) { /* Check for TC event */
+        LL_DMA_ClearFlag_TC6(DMA1);
+        led_update_sequence(1);                 /* Call update sequence as TC event */
     } 
 }
 

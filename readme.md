@@ -1,4 +1,4 @@
-# WS2812B with STM32 + DMA
+# WS2812B (RGB) [or compatible RGBW] with STM32 + DMA
 
 Example code for driving WS2812B LEDs with STM32 using TIM, PWM and DMA.
 

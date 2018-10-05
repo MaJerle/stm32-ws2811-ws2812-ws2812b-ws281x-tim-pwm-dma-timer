@@ -759,11 +759,11 @@ ARM Macro Assembler    Page 12
               00000000 
 Command Line: --debug --xref --diag_suppress=9931 --cpu=Cortex-M4.fp --apcs=int
 erwork --depend=ws2812b_led_ll\startup_stm32f401xe.d -ows2812b_led_ll\startup_s
-tm32f401xe.o -I.\RTE\_WS2812b_LED_LL -IC:\Keil_v5\ARM\PACK\ARM\CMSIS\5.2.0\CMSI
-S\Include -IC:\Keil_v5\ARM\PACK\Keil\STM32F4xx_DFP\2.11.0\Drivers\CMSIS\Device\
-ST\STM32F4xx\Include --predefine="__MICROLIB SETA 1" --predefine="__UVISION_VER
-SION SETA 525" --predefine="_RTE_ SETA 1" --predefine="STM32F401xE SETA 1" --li
-st=startup_stm32f401xe.lst startup_stm32f401xe.s
+tm32f401xe.o -I.\RTE\_WS2812b_LED_LL -IC:\Keil_v5\ARM\PACK\ARM\CMSIS\5.4.0\CMSI
+S\Core\Include -IC:\Keil_v5\ARM\PACK\Keil\STM32F4xx_DFP\2.13.0\Drivers\CMSIS\De
+vice\ST\STM32F4xx\Include --predefine="__MICROLIB SETA 1" --predefine="__UVISIO
+N_VERSION SETA 526" --predefine="_RTE_ SETA 1" --predefine="STM32F401xE SETA 1"
+ --list=startup_stm32f401xe.lst startup_stm32f401xe.s
 
 
 
