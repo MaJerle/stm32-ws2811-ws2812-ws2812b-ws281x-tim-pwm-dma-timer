@@ -60,29 +60,30 @@ void SystemClock_Config(void);
 /**
  * \brief           Array of 4x (or 3x) number of leds (R, G, B[, W] colors)
  */
-uint8_t leds_colors[LED_CFG_BYTES_PER_LED * LED_CFG_LEDS_CNT];
+static uint8_t
+leds_colors[LED_CFG_BYTES_PER_LED * LED_CFG_LEDS_CNT];
 
 /**
- * \brief           Temporary array for single LED with extracted PWM duty cycles
+ * \brief           Temporary array for dual LED with extracted PWM duty cycles
  * 
  * We need LED_CFG_RAW_BYTES_PER_LED bytes for PWM setup to send all bits.
  * Before we can send data for first led, we have to send reset pulse, which must be 50us long.
- * PWM frequency is 800kHz, to achieve 50us, we need to send 40 pulses with 0 duty cycle = make array size MAX(LED_CFG_RAW_BYTES_PER_LED, 40)
+ * PWM frequency is 800kHz, to achieve 50us, we need to send 40 pulses with 0 duty cycle = make array size MAX(2 * LED_CFG_RAW_BYTES_PER_LED, 40)
  */
-uint32_t tmp_led_data[48];
+static uint32_t
+tmp_led_data[2 * LED_CFG_RAW_BYTES_PER_LED];
 
-uint8_t is_reset_pulse;                         /*!< Status if we are sending reset pulse or led data */
-volatile uint8_t is_updating;                   /*!< Is updating in progress? */
-uint32_t current_led;                           /*!< Current LED number we are sending */
+static uint8_t          is_reset_pulse;     /*!< Status if we are sending reset pulse or led data */
+static volatile uint8_t is_updating;        /*!< Is updating in progress? */
+static uint32_t         current_led;        /*!< Current LED number we are sending */
 
 void        led_init(void);
-
 uint8_t     led_update(uint8_t block);
 
 #if LED_CFG_USE_RGBW
-uint8_t     led_set_color(uint32_t index, uint8_t r, uint8_t g, uint8_t b, uint8_t w);
+uint8_t     led_set_color(size_t index, uint8_t r, uint8_t g, uint8_t b, uint8_t w);
 uint8_t     led_set_color_all(uint8_t r, uint8_t g, uint8_t b, uint8_t w);
-uint8_t     led_set_color_rgbw(uint32_t index, uint32_t rgbw);
+uint8_t     led_set_color_rgbw(size_t index, uint32_t rgbw);
 uint8_t     led_set_color_all_rgbw(uint32_t rgbw);
 #else /* LED_CFG_USE_RGBW */
 uint8_t     led_set_color(size_t index, uint8_t r, uint8_t g, uint8_t b);
@@ -111,7 +112,9 @@ main(void) {
     /* At this point, timer is ready and CC1 is enabled */
     
     led_init();
-    led_set_color_all(0x01, 0x00, 0x00, 0x00);   led_update(1);
+    led_set_color_all(0x01, 0x00, 0x00, 0x00);
+    led_update(1);
+    while (1) {}
     
     /* Infinite loop */
     while (1) {
@@ -237,7 +240,7 @@ led_set_color_all(uint8_t r, uint8_t g, uint8_t b
 , uint8_t w
 #endif /* LED_CFG_USE_RGBW */
 ) {
-    uint32_t index;
+    size_t index;
     for (index = 0; index < LED_CFG_LEDS_CNT; index++) {
         leds_colors[index * LED_CFG_BYTES_PER_LED + 0] = r;
         leds_colors[index * LED_CFG_BYTES_PER_LED + 1] = g;
@@ -251,7 +254,7 @@ led_set_color_all(uint8_t r, uint8_t g, uint8_t b
 
 uint8_t
 #if LED_CFG_USE_RGBW
-led_set_color_rgbw(uint32_t index, uint32_t rgbw) {
+led_set_color_rgbw(size_t index, uint32_t rgbw) {
 #else /* LED_CFG_USE_RGBW */
 led_set_color_rgb(uint32_t index, uint32_t rgbw) {
 #endif /* !LED_CFG_USE_RGBW */
@@ -522,7 +525,7 @@ void
 SystemClock_Config(void) {
     LL_FLASH_SetLatency(LL_FLASH_LATENCY_2);
 
-    if(LL_FLASH_GetLatency() != LL_FLASH_LATENCY_2) {
+    if (LL_FLASH_GetLatency() != LL_FLASH_LATENCY_2) {
         Error_Handler();  
     }
     LL_PWR_SetRegulVoltageScaling(LL_PWR_REGU_VOLTAGE_SCALE2);
