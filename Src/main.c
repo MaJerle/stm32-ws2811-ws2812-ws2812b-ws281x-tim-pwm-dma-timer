@@ -518,48 +518,45 @@ LL_Init(void) {
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+ * \brief           System clock configuration
+ */
 void
 SystemClock_Config(void) {
+	/* Configure flash latency */
     LL_FLASH_SetLatency(LL_FLASH_LATENCY_2);
-
     if (LL_FLASH_GetLatency() != LL_FLASH_LATENCY_2) {
         Error_Handler();  
     }
+	
+	/* Set voltage scaling */
     LL_PWR_SetRegulVoltageScaling(LL_PWR_REGU_VOLTAGE_SCALE2);
+	
+	/* Enable HIS */
     LL_RCC_HSI_SetCalibTrimming(16);
     LL_RCC_HSI_Enable();
-
-    /* Wait till HSI is ready */
-    while (LL_RCC_HSI_IsReady() != 1) {
-
-    }
+    while (LL_RCC_HSI_IsReady() != 1) {}
+	
+    /* Configure PLL */
     LL_RCC_PLL_ConfigDomain_SYS(LL_RCC_PLLSOURCE_HSI, LL_RCC_PLLM_DIV_8, 84, LL_RCC_PLLP_DIV_2);
     LL_RCC_PLL_Enable();
-
-    /* Wait till PLL is ready */
-    while (LL_RCC_PLL_IsReady() != 1) {
-
-    }
+    while (LL_RCC_PLL_IsReady() != 1) {}
+	
+	/* Set prescalers */
     LL_RCC_SetAHBPrescaler(LL_RCC_SYSCLK_DIV_1);
     LL_RCC_SetAPB1Prescaler(LL_RCC_APB1_DIV_2);
     LL_RCC_SetAPB2Prescaler(LL_RCC_APB2_DIV_1);
+	
+	/* Configure system clock */
     LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_PLL);
-
-    /* Wait till System clock is ready */
-    while(LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_PLL) {
-
-    }
-    LL_Init1msTick(84000000);
+    while(LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_PLL) {}
+    
+	/* Configure systick */
+	LL_Init1msTick(84000000);
     LL_SYSTICK_SetClkSource(LL_SYSTICK_CLKSOURCE_HCLK);
+    NVIC_SetPriority(SysTick_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 15, 0));
+    LL_SYSTICK_EnableIT();
     LL_SetSystemCoreClock(84000000);
     LL_RCC_SetTIMPrescaler(LL_RCC_TIM_PRESCALER_TWICE);
-
-    /* SysTick_IRQn interrupt configuration */
-    NVIC_SetPriority(SysTick_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
-    LL_SYSTICK_EnableIT();
 }
 
 /* USER CODE BEGIN 4 */
