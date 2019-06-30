@@ -501,20 +501,13 @@ LL_Init(void) {
     NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
 
     /* System interrupt init*/
-    /* MemoryManagement_IRQn interrupt configuration */
-    NVIC_SetPriority(MemoryManagement_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
-    /* BusFault_IRQn interrupt configuration */
-    NVIC_SetPriority(BusFault_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
-    /* UsageFault_IRQn interrupt configuration */
-    NVIC_SetPriority(UsageFault_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
-    /* SVCall_IRQn interrupt configuration */
-    NVIC_SetPriority(SVCall_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
-    /* DebugMonitor_IRQn interrupt configuration */
-    NVIC_SetPriority(DebugMonitor_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
-    /* PendSV_IRQn interrupt configuration */
-    NVIC_SetPriority(PendSV_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
-    /* SysTick_IRQn interrupt configuration */
-    NVIC_SetPriority(SysTick_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
+    NVIC_SetPriority(MemoryManagement_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
+    NVIC_SetPriority(BusFault_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
+    NVIC_SetPriority(UsageFault_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
+    NVIC_SetPriority(SVCall_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
+    NVIC_SetPriority(DebugMonitor_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
+    NVIC_SetPriority(PendSV_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
+    NVIC_SetPriority(SysTick_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 15, 0));
 }
 
 /**
@@ -522,16 +515,16 @@ LL_Init(void) {
  */
 void
 SystemClock_Config(void) {
-	/* Configure flash latency */
+    /* Configure flash latency */
     LL_FLASH_SetLatency(LL_FLASH_LATENCY_2);
     if (LL_FLASH_GetLatency() != LL_FLASH_LATENCY_2) {
         Error_Handler();  
     }
 	
-	/* Set voltage scaling */
+    /* Set voltage scaling */
     LL_PWR_SetRegulVoltageScaling(LL_PWR_REGU_VOLTAGE_SCALE2);
 	
-	/* Enable HIS */
+    /* Enable HSI */
     LL_RCC_HSI_SetCalibTrimming(16);
     LL_RCC_HSI_Enable();
     while (LL_RCC_HSI_IsReady() != 1) {}
@@ -541,17 +534,17 @@ SystemClock_Config(void) {
     LL_RCC_PLL_Enable();
     while (LL_RCC_PLL_IsReady() != 1) {}
 	
-	/* Set prescalers */
+    /* Set prescalers */
     LL_RCC_SetAHBPrescaler(LL_RCC_SYSCLK_DIV_1);
     LL_RCC_SetAPB1Prescaler(LL_RCC_APB1_DIV_2);
     LL_RCC_SetAPB2Prescaler(LL_RCC_APB2_DIV_1);
 	
-	/* Configure system clock */
+    /* Configure system clock */
     LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_PLL);
     while(LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_PLL) {}
     
-	/* Configure systick */
-	LL_Init1msTick(84000000);
+    /* Configure systick */
+    LL_Init1msTick(84000000);
     LL_SYSTICK_SetClkSource(LL_SYSTICK_CLKSOURCE_HCLK);
     NVIC_SetPriority(SysTick_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 15, 0));
     LL_SYSTICK_EnableIT();
