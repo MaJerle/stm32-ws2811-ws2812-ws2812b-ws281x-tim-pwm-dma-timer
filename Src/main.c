@@ -131,7 +131,7 @@ main(void) {
             led_set_color_all(0, 0, 0, 0);
             
             timeout = 0x7FFFF;
-            while (timeout--);
+            while (--timeout) {}
         }
         
         //led_set_color_all(0, 0, 0, 0);  led_update(1);   timeout = 0x3FFFFF;  while (timeout--);
