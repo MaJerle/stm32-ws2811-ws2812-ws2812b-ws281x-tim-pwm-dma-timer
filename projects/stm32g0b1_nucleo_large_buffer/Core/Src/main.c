@@ -13,7 +13,7 @@
  *
  * Set this value for your use case
  */
-#define LED_CFG_COUNT                           240 /* 20 */
+#define LED_CFG_COUNT                           1
 
 /**
  * \brief           Number of bytes for one LED color description
@@ -42,19 +42,18 @@
  * 
  * \note            Few conditions apply to the value, there must be AND match
  *                      - Must be multiplier of \ref LED_CFG_LEDS_PER_DMA_IRQ
- *                      - Must be at least `2 * LED_CFG_LEDS_PER_DMA_IRQ` because first led data starts only after first DMA TC transfer
- *                      - Must be at least value to support minimum reset time, `300us`
+ *                      - Must be greater than 0
+ *                      - Must be set to a value to support minimum reset time, `300us`
  */
-#define LED_RESET_PRE_MIN_IRQ_COUNT             (2 * LED_CFG_LEDS_PER_DMA_IRQ)
+#define LED_RESET_PRE_MIN_IRQ_COUNT             12
 
 /**
  * \brief           Number of "1-led-transmission-time" units to send all zeros
  *                  after last led has been sent out
- *
- * \note            Few conditions apply to the value, there must be AND match
- *                      - Must be multiplier of \ref LED_CFG_LEDS_PER_DMA_IRQ
+ * \note            It indicates minimum required value, while actual may be longer
+ *                  and it has to do with multipliers of \ref LED_CFG_LEDS_PER_DMA_IRQ
  */
-#define LED_RESET_POST_MIN_IRQ_COUNT            (1 * LED_CFG_LEDS_PER_DMA_IRQ)
+#define LED_RESET_POST_MIN_IRQ_COUNT            11
 
 /**
  * \brief           Application array to store led colors
@@ -75,7 +74,12 @@ static uint8_t leds_color_data[LED_CFG_BYTES_PER_LED * LED_CFG_COUNT];
  * 
  * Type of variable should be unsigned 32-bit, to satisfy TIM2 that is 32-bit timer
  */
-static uint32_t dma_raw_buffer[2][LED_CFG_LEDS_PER_DMA_IRQ][LED_CFG_BYTES_PER_LED * 8];
+static uint32_t dma_buffer[(2) * (LED_CFG_LEDS_PER_DMA_IRQ) * (LED_CFG_BYTES_PER_LED * 8)];
+#define DMA_BUFF_ELE_LEN                    ((uint32_t)(sizeof(dma_buffer) / sizeof((dma_buffer)[0])))
+#define DMA_BUFF_ELE_HALF_LEN               ((uint32_t)(DMA_BUFF_ELE_LEN >> 1))
+#define DMA_BUFF_ELE_HALF_SIZEOF            ((size_t)(sizeof(dma_buffer[0]) * DMA_BUFF_ELE_HALF_LEN))
+#define DMA_BUFF_ELE_LED_LEN                ((uint32_t)(LED_CFG_BYTES_PER_LED * 8))
+#define DMA_BUFF_ELE_LED_SIZEOF             ((size_t)(sizeof(dma_buffer[0]) * DMA_BUFF_ELE_LED_LEN))
 
 /* Control variables for transfer */
 static volatile uint8_t     is_updating = 0;            /* Set to `1` when update is in progress */
@@ -145,9 +149,9 @@ main(void) {
 
     /* Set up the first leds with dummy color */
     for (size_t i = 0; i < LED_CFG_COUNT; ++i) {
-        leds_color_data[i * LED_CFG_BYTES_PER_LED + 0] = i * 0x10;
-        leds_color_data[i * LED_CFG_BYTES_PER_LED + 1] = i * 0x10;
-        leds_color_data[i * LED_CFG_BYTES_PER_LED + 2] = i * 0x10;
+        leds_color_data[i * LED_CFG_BYTES_PER_LED + 0] = i % 2 == 0 ? 0xFF : 0x00;
+        leds_color_data[i * LED_CFG_BYTES_PER_LED + 1] = i % 2 == 0 ? 0xFF : 0x00;
+        leds_color_data[i * LED_CFG_BYTES_PER_LED + 2] = i % 2 == 0 ? 0xFF : 0x00;
     }
 
     /* Define fade init values */
@@ -197,24 +201,29 @@ led_update_sequence(uint8_t tc) {
          */
         uint32_t next_led = irq_count - LED_RESET_PRE_MIN_IRQ_COUNT;
 #if LED_CFG_LEDS_PER_DMA_IRQ == 1
-        led_fill_led_pwm_data(next_led, &dma_raw_buffer[tc][0][0]);
+        led_fill_led_pwm_data(next_led, &dma_buffer[tc * DMA_BUFF_ELE_LED_SIZEOF]);
 #endif /* LED_CFG_LEDS_PER_DMA_IRQ == 1 */
 #if LED_CFG_LEDS_PER_DMA_IRQ > 1
         uint32_t counter = 0;
         for (; counter < LED_CFG_LEDS_PER_DMA_IRQ && next_led < LED_CFG_COUNT; ++counter, ++next_led) {
-            led_fill_led_pwm_data(next_led, &dma_raw_buffer[tc][counter][0]);
+            led_fill_led_pwm_data(next_led, &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + counter * DMA_BUFF_ELE_LED_LEN]);
         }
         if (counter < LED_CFG_LEDS_PER_DMA_IRQ) {
-            memset(&dma_raw_buffer[tc][counter][0], 0x00, (LED_CFG_LEDS_PER_DMA_IRQ - counter) * sizeof(dma_raw_buffer[0][0]));
+            memset(
+                    &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + counter * DMA_BUFF_ELE_LED_LEN],
+                    0x00,
+                    (LED_CFG_LEDS_PER_DMA_IRQ - counter) * DMA_BUFF_ELE_LED_SIZEOF
+                    //(LED_CFG_LEDS_PER_DMA_IRQ - counter) * sizeof(dma_buffer[0][0])
+            );
         }
 #endif /* LED_CFG_LEDS_PER_DMA_IRQ > 1 */
-    } else if (irq_count <= (LED_RESET_PRE_MIN_IRQ_COUNT + LED_CFG_COUNT + LED_RESET_POST_MIN_IRQ_COUNT)) {
+    } else if (irq_count < (LED_RESET_PRE_MIN_IRQ_COUNT + LED_CFG_COUNT + LED_RESET_POST_MIN_IRQ_COUNT + LED_CFG_LEDS_PER_DMA_IRQ)) {
         /*
          * This is post-reset circuitry and must be set to at least 1 level in size
          *
          * It sends all-zero to the all leds
          */
-        memset(&dma_raw_buffer[tc], 0x00, sizeof(dma_raw_buffer[0]));
+        memset(&dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN], 0x00, DMA_BUFF_ELE_HALF_SIZEOF);
     } else {
         /*
          * We are now ready to stop DMA and TIM channel,
@@ -291,8 +300,16 @@ led_start_transfer(void) {
     is_updating = 1;
     irq_count = LED_CFG_LEDS_PER_DMA_IRQ;
 
-    /* Set all bytes to 0 to achieve start reset pulse = all low */
-    memset(dma_raw_buffer, 0x00, sizeof(dma_raw_buffer));
+    /* Reset all bytes to 0 first, for reset pulse */
+    memset(dma_buffer, 0x00, sizeof(dma_buffer));
+
+    /*
+     * When requested reset length is smaller than size of DMA buffer,
+     * we should fill the buffer at start
+     */
+    for (uint32_t i = 0, index = LED_RESET_PRE_MIN_IRQ_COUNT; index < 2 * LED_CFG_LEDS_PER_DMA_IRQ; ++index, ++i) {
+        led_fill_led_pwm_data(i, &dma_buffer[index * DMA_BUFF_ELE_LED_LEN]);
+    }
 
     /*
      * This is where DMA gets configured for data transfer
@@ -301,8 +318,8 @@ led_start_transfer(void) {
      * - Memory length (number of elements) for 2 LEDs of data
      */
     LL_DMA_SetMode(DMA2, LL_DMA_CHANNEL_5, LL_DMA_MODE_CIRCULAR);
-    LL_DMA_SetMemoryAddress(DMA2, LL_DMA_CHANNEL_5, (uint32_t)dma_raw_buffer);
-    LL_DMA_SetDataLength(DMA2, LL_DMA_CHANNEL_5, sizeof(dma_raw_buffer) / sizeof(dma_raw_buffer[0][0][0]));
+    LL_DMA_SetMemoryAddress(DMA2, LL_DMA_CHANNEL_5, (uint32_t)dma_buffer);
+    LL_DMA_SetDataLength(DMA2, LL_DMA_CHANNEL_5, DMA_BUFF_ELE_LEN);
 
     /* Clear flags, enable interrupts */
     LL_DMA_ClearFlag_TC5(DMA2);
