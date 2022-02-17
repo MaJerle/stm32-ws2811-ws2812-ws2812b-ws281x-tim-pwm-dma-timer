@@ -13,7 +13,7 @@
  *
  * Set this value for your use case
  */
-#define LED_CFG_COUNT                           1
+#define LED_CFG_COUNT                           10
 
 /**
  * \brief           Number of bytes for one LED color description
@@ -34,7 +34,7 @@
  * 
  * \note            Value set to `6` means DMA TC or HT interrupts are triggered at each `180us at 800kHz tim update rate`
  */
-#define LED_CFG_LEDS_PER_DMA_IRQ                6
+#define LED_CFG_LEDS_PER_DMA_IRQ                4
 
 /**
  * \brief           Defines minimum number of "1-led-transmission-time" blocks
@@ -45,7 +45,7 @@
  *                      - Must be greater than 0
  *                      - Must be set to a value to support minimum reset time, `300us`
  */
-#define LED_RESET_PRE_MIN_IRQ_COUNT             12
+#define LED_RESET_PRE_MIN_IRQ_COUNT             9
 
 /**
  * \brief           Number of "1-led-transmission-time" units to send all zeros
@@ -53,7 +53,7 @@
  * \note            It indicates minimum required value, while actual may be longer
  *                  and it has to do with multipliers of \ref LED_CFG_LEDS_PER_DMA_IRQ
  */
-#define LED_RESET_POST_MIN_IRQ_COUNT            11
+#define LED_RESET_POST_MIN_IRQ_COUNT            8
 
 /**
  * \brief           Application array to store led colors
@@ -98,11 +98,17 @@ static void     tim2_init(void);
 static void     gpio_init(void);
 static void     led_fill_led_pwm_data(size_t ledx, uint32_t* ptr);
 
+/* Test purpose only */
+static uint32_t led_fill_counter;
+static uint16_t led_fill_counter_arr[LED_CFG_COUNT * 2];
+
 /* Debug control pins */
 #define DBG_PIN_UPDATING_HIGH                   LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_0)
 #define DBG_PIN_UPDATING_LOW                    LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_0)
 #define DBG_PIN_IRQ_HIGH                        LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_1)
 #define DBG_PIN_IRQ_LOW                         LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1)
+#define DBG_PIN_DATA_FILL_HIGH                  LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_4)
+#define DBG_PIN_DATA_FILL_LOW                   LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_4)
 
 /**
  * \brief           Calculate Bezier curve (ease-in, ease-out) for input value
@@ -193,11 +199,20 @@ led_update_sequence(uint8_t tc) {
 
     if (irq_count < LED_RESET_PRE_MIN_IRQ_COUNT) {
         /* We are still in reset sequence mode */
+        if ((irq_count + LED_CFG_LEDS_PER_DMA_IRQ) > LED_RESET_PRE_MIN_IRQ_COUNT) {
+            uint32_t index = LED_RESET_PRE_MIN_IRQ_COUNT - irq_count;
+            /* We need to preload some values for some leds now */
+            /* Otherwise we will miss some leds */
+            for (uint32_t i = 0; index < LED_CFG_LEDS_PER_DMA_IRQ && i < LED_CFG_COUNT; ++index, ++i) {
+                led_fill_led_pwm_data(i, &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + (index % LED_CFG_LEDS_PER_DMA_IRQ) * DMA_BUFF_ELE_LED_LEN]);
+            }
+        }
     } else if (irq_count < (LED_RESET_PRE_MIN_IRQ_COUNT + LED_CFG_COUNT)) {
         /*
          * This is where LED data gets prepared to be transmitted in the next cycle
          *
-         * It is important to have irq_count aligned with minimum reset cycle
+         * It is important to have irq_count aligned with minimum reset cycle,
+         * or wrong LED is being used as data input
          */
         uint32_t next_led = irq_count - LED_RESET_PRE_MIN_IRQ_COUNT;
 #if LED_CFG_LEDS_PER_DMA_IRQ == 1
@@ -209,12 +224,7 @@ led_update_sequence(uint8_t tc) {
             led_fill_led_pwm_data(next_led, &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + counter * DMA_BUFF_ELE_LED_LEN]);
         }
         if (counter < LED_CFG_LEDS_PER_DMA_IRQ) {
-            memset(
-                    &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + counter * DMA_BUFF_ELE_LED_LEN],
-                    0x00,
-                    (LED_CFG_LEDS_PER_DMA_IRQ - counter) * DMA_BUFF_ELE_LED_SIZEOF
-                    //(LED_CFG_LEDS_PER_DMA_IRQ - counter) * sizeof(dma_buffer[0][0])
-            );
+            memset(&dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + counter * DMA_BUFF_ELE_LED_LEN], 0x00, (LED_CFG_LEDS_PER_DMA_IRQ - counter) * DMA_BUFF_ELE_LED_SIZEOF);
         }
 #endif /* LED_CFG_LEDS_PER_DMA_IRQ > 1 */
     } else if (irq_count < (LED_RESET_PRE_MIN_IRQ_COUNT + LED_CFG_COUNT + LED_RESET_POST_MIN_IRQ_COUNT + LED_CFG_LEDS_PER_DMA_IRQ)) {
@@ -272,8 +282,11 @@ led_fill_led_pwm_data(size_t ledx, uint32_t* ptr) {
     const uint32_t pulse_high = (3 * arr / 4) - 1;
     const uint32_t pulse_low = (1 * arr / 4) - 1;
 
+    DBG_PIN_DATA_FILL_HIGH;
     if (ledx < LED_CFG_COUNT) {
         uint32_t r, g, b;
+
+        led_fill_counter_arr[led_fill_counter++] = ledx;
 
         r = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 0] * (uint32_t)brightness) / (uint32_t)0xFF);
         g = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 1] * (uint32_t)brightness) / (uint32_t)0xFF);
@@ -284,6 +297,7 @@ led_fill_led_pwm_data(size_t ledx, uint32_t* ptr) {
             ptr[16 + i] =   (b & (1 << (7 - i))) ? pulse_high : pulse_low;
         }
     }
+    DBG_PIN_DATA_FILL_LOW;
 }
 
 /**
@@ -302,6 +316,10 @@ led_start_transfer(void) {
 
     /* Reset all bytes to 0 first, for reset pulse */
     memset(dma_buffer, 0x00, sizeof(dma_buffer));
+
+    /* Test only */
+    memset(led_fill_counter_arr, 0x00, sizeof(led_fill_counter_arr));
+    led_fill_counter = 0;
 
     /*
      * When requested reset length is smaller than size of DMA buffer,
@@ -425,9 +443,10 @@ gpio_init(void) {
      *
      * PA0   ------> Pin set to high when transmission is on-going
      * PA1   ------> Pin toggled on each DMA interrupt
-     * PA2   ------> Reserved for future use
+     * PA4   ------> Pin toggled when LED data are being prepared already before DMA run
+     * PA5   ------> Pin toggled when LED data are being prepared in interrupt when values are not-aligned
      */
-    GPIO_InitStruct.Pin = LL_GPIO_PIN_0 | LL_GPIO_PIN_1 | LL_GPIO_PIN_2;
+    GPIO_InitStruct.Pin = LL_GPIO_PIN_0 | LL_GPIO_PIN_1 | LL_GPIO_PIN_2 | LL_GPIO_PIN_4 | LL_GPIO_PIN_5;
     GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
     GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
     GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
