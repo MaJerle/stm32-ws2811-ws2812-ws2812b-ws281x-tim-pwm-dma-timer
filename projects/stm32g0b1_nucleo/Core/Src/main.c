@@ -9,51 +9,95 @@
 #define ARRAYSIZE(x)                    (sizeof(x) / sizeof((x)[0]))
 
 /**
- * \brief           Number of LEDs (or LED drivers in case of WS2811) connected to strip
+ * \brief           Number of LEDs (or LED drivers in case of WS2811) connected to single strip in a row
  *
- * Set this value for your use case
+ * This value should be set to your defined length
  */
-#define LED_CFG_COUNT                           200 /* 20 */
+#define LED_CFG_COUNT                           10
 
-/* Number of bytes necessary for one LED in memory */
+/**
+ * \brief           Number of bytes for one LED color description
+ * \note            Set to `3` for RGB, or set to `4` for RGBW use case
+ */
 #define LED_CFG_BYTES_PER_LED                   3
 
 /**
- * \brief           Size of raw-buffer for timer, used for each entry, units will be `uint32_t`
+ * \brief           Defines size of raw transmission leds in units of "data-for-leds"
+ * \note            `1 unit` represents `30us` at `800 kHz and 24-bit of LED data (RGB)`
+ *                      or `40us` at ˙800 kHz and 32-bit of LED data (RGBW)`
  *
- * One LED driver needs 8 bits of data, of ones or zeros.
+ * Based on the value:
+ * - Greater it is, less frequent are DMA interrupts, but interrupt handling takes potentially more time
+ * - Greater it is, larger is the raw dma buffer as it has to accomodate for `2*value` number of elements for led's data
  *
- * Do not modify this value
+ * \note            Values should be greater-or-equal than `1` and (advise) not higher than `8˙
+ * \note            Value set to `6` means DMA TC or HT interrupts are triggered at each `180us at 800kHz tim update rate for RGB leds`
  */
-#define LED_CFG_BYTES_PER_LED_RAW       (LED_CFG_BYTES_PER_LED * 8)
+#define LED_CFG_LEDS_PER_DMA_IRQ                1
 
-/* User LED application data info */
+/**
+ * \brief           Defines minimum number of "1-led-transmission-time" blocks
+ *                  to send logical `0` to the bus, indicating reset before data transmission starts.
+ *
+ * This is a must to generate reset value.
+ * As per datasheet, different devices require different min reset time, normally min `280us`,
+ * that represents minimum `10 led cycles`
+ *
+ * \note            Few conditions apply to the value and all must be a pass
+ *                      - Must be greater than `0`
+ *                      - Must be set to a value to support minimum reset time required by the driver
+ *
+ *                  Further advices
+ *                      - Set it to `2*LED_CFG_LEDS_PER_DMA_IRQ` or higher
+ *                      - Set it as multiplier of \ref LED_CFG_LEDS_PER_DMA_IRQ
+ */
+#define LED_RESET_PRE_MIN_LED_CYCLES             10
+
+/**
+ * \brief           Number of "1-led-transmission-time" units to send all zeros
+ *                  after last led has been sent out
+ * \note            It indicates minimum required value, while actual may be longer
+ *                  and it has to do with multipliers of \ref LED_CFG_LEDS_PER_DMA_IRQ
+ */
+#define LED_RESET_POST_MIN_LED_CYCLES            8
+
+/**
+ * \brief           Application array to store led colors for application use case
+ *                      Data in format R,G,B,R,G,B,...
+ *
+ * Array used by user application to store data to
+ */
 static uint8_t leds_color_data[LED_CFG_BYTES_PER_LED * LED_CFG_COUNT];
 
 /**
- * \brief           This buffer is used for DMA operation purpose.
- *
- * It holds content in 2 cases:
- * - When sending reset pulse, it contains all zeros for timer requests (300us / 1.25us per pulse = 240)
- * - When sending LED data, it needs 2x LED_CFG_BYTES_PER_LED_RAW words, to always keep 2 LEDs of data ready
- *
+ * \brief           This buffer acts as raw buffer for DMA to transfer data from memory to timer compare
  * \note            DMA must have access to this variable (memory location)
+ *
+ * It is a multi-dimentional array:
+ * - First part represents 2 parts, one before half-transfer, second after half-transfer complete
+ * - Second part is number of LEDs to transmit before DMA HT/TC interrupts get fired
+ * - Third part are entries for raw timer compare register to send logical 1 and 0 to the bus
+ *
+ * Type of variable should be unsigned 32-bit, to satisfy TIM2 that is 32-bit timer
  */
-static uint32_t dma_raw_buffer[2 * LED_CFG_BYTES_PER_LED_RAW];
+static uint32_t dma_buffer[(2) * (LED_CFG_LEDS_PER_DMA_IRQ) * (LED_CFG_BYTES_PER_LED * 8)];
 
-/**
- * \brief           Number of "led-long" pulses for pre-reset sequence.
- */
-#define LED_RESET_PRE_MIN_IRQ_COUNT             12
+/* Used macros */
 
-/**
- * \brief           Number of "led-long" pulses for post-reset sequence.
- */
-#define LED_RESET_POST_MIN_IRQ_COUNT            2
+/* Number of elements in raw DMA buffer array - used by DMA transfer length */
+#define DMA_BUFF_ELE_LEN                    ((uint32_t)(sizeof(dma_buffer) / sizeof((dma_buffer)[0])))
+/* Half number of elements in raw DMA buffer */
+#define DMA_BUFF_ELE_HALF_LEN               ((uint32_t)(DMA_BUFF_ELE_LEN >> 1))
+/* Size of (in bytes) half length of array -> used for memory set */
+#define DMA_BUFF_ELE_HALF_SIZEOF            ((size_t)(sizeof(dma_buffer[0]) * DMA_BUFF_ELE_HALF_LEN))
+/* Number of array indexes required for one led */
+#define DMA_BUFF_ELE_LED_LEN                ((uint32_t)(LED_CFG_BYTES_PER_LED * 8))
+/* Size of (in bytes) of one led memory in DMA buffer */
+#define DMA_BUFF_ELE_LED_SIZEOF             ((size_t)(sizeof(dma_buffer[0]) * DMA_BUFF_ELE_LED_LEN))
 
 /* Control variables for transfer */
 static volatile uint8_t     is_updating = 0;            /* Set to `1` when update is in progress */
-static volatile uint8_t     irq_count;                  /* Number of IRQ steps */
+static volatile uint32_t    led_cycles_cnt;                  /* Counts how many "1-led-time" have been transmitted so far */
 static volatile uint8_t     brightness = 0xFF;          /* Brightness between 0 and 0xFF */
 static volatile uint32_t    color_counter = 1;          /* Color, being increased each fade reaching 0 */
 
@@ -65,6 +109,20 @@ int16_t     fade_value;
 static uint8_t  led_start_transfer(void);
 void            SystemClock_Config(void);
 static void     tim2_init(void);
+static void     gpio_init(void);
+static void     led_fill_led_pwm_data(size_t ledx, uint32_t* ptr);
+
+/* Test purpose only */
+static uint32_t led_fill_counter;
+static uint16_t led_fill_counter_arr[LED_CFG_COUNT * 2];
+
+/* Debug control pins */
+#define DBG_PIN_UPDATING_HIGH                   LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_0)
+#define DBG_PIN_UPDATING_LOW                    LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_0)
+#define DBG_PIN_IRQ_HIGH                        LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_1)
+#define DBG_PIN_IRQ_LOW                         LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1)
+#define DBG_PIN_DATA_FILL_HIGH                  LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_4)
+#define DBG_PIN_DATA_FILL_LOW                   LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_4)
 
 /**
  * \brief           Calculate Bezier curve (ease-in, ease-out) for input value
@@ -107,12 +165,13 @@ main(void) {
 
     /* Initialize all configured peripherals */
     tim2_init();
+    gpio_init();
 
     /* Set up the first leds with dummy color */
     for (size_t i = 0; i < LED_CFG_COUNT; ++i) {
-        leds_color_data[i * LED_CFG_BYTES_PER_LED + 0] = 0x00;
-        leds_color_data[i * LED_CFG_BYTES_PER_LED + 1] = 0x00;
-        leds_color_data[i * LED_CFG_BYTES_PER_LED + 2] = 0xFF;
+        leds_color_data[i * LED_CFG_BYTES_PER_LED + 0] = i & 1 ? 0xFF : 0x00;
+        leds_color_data[i * LED_CFG_BYTES_PER_LED + 1] = i & 2 ? 0xFF : 0x00;
+        leds_color_data[i * LED_CFG_BYTES_PER_LED + 2] = i & 4 ? 0xFF : 0x00;
     }
 
     /* Define fade init values */
@@ -130,6 +189,205 @@ main(void) {
     /* Infinite loop */
     while (1) {}
     return 0;
+}
+
+/**
+ * \brief           Update sequence function,
+ *                  called on each DMA transfer complete or half-transfer complete events
+ * \param[in]       tc: Set to `1` when function is called from DMA TC event, `0` when from HT event
+ */
+static void
+led_update_sequence(uint8_t tc) {
+    DBG_PIN_IRQ_HIGH;
+    tc = tc ? 1 : 0;
+    if (!is_updating) {
+        DBG_PIN_IRQ_LOW;
+        return;
+    }
+
+    /*
+     * led_cycles_cnt variable represents minimum number of
+     * led cycles that will be transmitted on the bus.
+     *
+     * It is set to non-0 value after transfer and gets increased in each interrupt.
+     *
+     * Interrupts are triggered (TC or HT) when DMA transfers `LED_CFG_LEDS_PER_DMA_IRQ` led cycles of data elements
+     */
+    led_cycles_cnt += LED_CFG_LEDS_PER_DMA_IRQ;
+
+    if (led_cycles_cnt < LED_RESET_PRE_MIN_LED_CYCLES) {
+#if LED_CFG_LEDS_PER_DMA_IRQ > 1
+        /*
+         * We are still in reset sequence for the moment.
+         *
+         * When LED_CFG_LEDS_PER_DMA_IRQ > 1
+         * and pre-reset led cycles is not aligned to LED_CFG_LEDS_PER_DMA_IRQ value,
+         * first leds need to be filled already at this stage
+         */
+        if ((led_cycles_cnt + LED_CFG_LEDS_PER_DMA_IRQ) > LED_RESET_PRE_MIN_LED_CYCLES) {
+            uint32_t index = LED_RESET_PRE_MIN_LED_CYCLES - led_cycles_cnt;
+            /* We need to preload some values for some leds now */
+            /* Otherwise we will miss some leds */
+            for (uint32_t i = 0; index < LED_CFG_LEDS_PER_DMA_IRQ && i < LED_CFG_COUNT; ++index, ++i) {
+                led_fill_led_pwm_data(i, &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + (index % LED_CFG_LEDS_PER_DMA_IRQ) * DMA_BUFF_ELE_LED_LEN]);
+            }
+        }
+#endif /* LED_CFG_LEDS_PER_DMA_IRQ > 1 */
+    } else if (led_cycles_cnt < (LED_RESET_PRE_MIN_LED_CYCLES + LED_CFG_COUNT)) {
+        /*
+         * This is where we prepare data for next cycle only
+         *
+         * next led is simply calculated by subtracting counter from reset cycle
+         * If reset is not aligned, it is important to handle first leds already in previous if statement,
+         * otherwise we will miss first x leds (where x depends on how much we are away from alignment)
+         */
+        uint32_t next_led = led_cycles_cnt - LED_RESET_PRE_MIN_LED_CYCLES;
+#if LED_CFG_LEDS_PER_DMA_IRQ == 1
+        led_fill_led_pwm_data(next_led, &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN]);
+#endif /* LED_CFG_LEDS_PER_DMA_IRQ == 1 */
+#if LED_CFG_LEDS_PER_DMA_IRQ > 1
+        uint32_t counter = 0;
+        /*
+         * Fill buffer with led data
+         *
+         * If counter stops earlier than buffer ends (low number of leds or not aligned),
+         * fill remaining with all zeros to indicate post-reset signal
+         */
+        for (; counter < LED_CFG_LEDS_PER_DMA_IRQ && next_led < LED_CFG_COUNT; ++counter, ++next_led) {
+            led_fill_led_pwm_data(next_led, &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + counter * DMA_BUFF_ELE_LED_LEN]);
+        }
+        if (counter < LED_CFG_LEDS_PER_DMA_IRQ) {
+            memset(&dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + counter * DMA_BUFF_ELE_LED_LEN], 0x00, (LED_CFG_LEDS_PER_DMA_IRQ - counter) * DMA_BUFF_ELE_LED_SIZEOF);
+        }
+#endif /* LED_CFG_LEDS_PER_DMA_IRQ > 1 */
+    } else if (led_cycles_cnt < (LED_RESET_PRE_MIN_LED_CYCLES + LED_CFG_COUNT + LED_RESET_POST_MIN_LED_CYCLES + LED_CFG_LEDS_PER_DMA_IRQ)) {
+        /*
+         * This is post-reset and must be set to at least 1 level in size
+         * and sends all zeros to the leds.
+         *
+         * Manually reset array to all zeros using memset, but only if it has not been set already
+         * (to not waste CPU resources for small MCUs)
+         */
+        if (led_cycles_cnt < (LED_RESET_PRE_MIN_LED_CYCLES + LED_CFG_COUNT + 2 * LED_CFG_LEDS_PER_DMA_IRQ)) {
+            memset(&dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN], 0x00, DMA_BUFF_ELE_HALF_SIZEOF);
+        }
+    } else {
+        /*
+         * We are now ready to stop DMA and TIM channel,
+         * otherwise transfers will continue to occur (circular mode).
+         *
+         * Disable interrupts prior disabling DMA transfer.
+         *
+         * Some STM32 (F2, F4, F7) may generate TC or HT interrupts when DMA is manually disabled,
+         * and since it is not necessary to receive these interrupts from now-on,
+         * it's better to simply disable them
+         */
+        LL_DMA_DisableIT_TC(DMA2, LL_DMA_CHANNEL_5);
+        LL_DMA_DisableIT_HT(DMA2, LL_DMA_CHANNEL_5);
+        LL_DMA_DisableChannel(DMA2, LL_DMA_CHANNEL_5);
+        LL_TIM_CC_DisableChannel(TIM2, LL_TIM_CHANNEL_CH4);
+        is_updating = 0;
+        DBG_PIN_UPDATING_LOW;
+    }
+    DBG_PIN_IRQ_LOW;
+}
+
+/**
+ * \brief           DMA2 channel 5 interrupt handler
+ */
+void
+DMA1_Ch4_7_DMA2_Ch1_5_DMAMUX1_OVR_IRQHandler(void) {
+    if (LL_DMA_IsEnabledIT_HT(DMA2, LL_DMA_CHANNEL_5) && LL_DMA_IsActiveFlag_HT5(DMA2)) {
+        LL_DMA_ClearFlag_HT5(DMA2);
+        led_update_sequence(0);
+    }
+    if (LL_DMA_IsEnabledIT_TC(DMA2, LL_DMA_CHANNEL_5) && LL_DMA_IsActiveFlag_TC5(DMA2)) {
+        LL_DMA_ClearFlag_TC5(DMA2);
+        led_update_sequence(1);
+    }
+}
+
+/**
+ * \brief           Prepares data from memory for PWM output for timer
+ * \note            Memory is in format R,G,B, while PWM must be configured in G,R,B[,W]
+ * \param[in]       ledx: LED index to set the color
+ * \param[out]      ptr: Output array with at least LED_CFG_RAW_BYTES_PER_LED-words of memory
+ */
+static void
+led_fill_led_pwm_data(size_t ledx, uint32_t* ptr) {
+    const uint32_t arr = TIM2->ARR + 1;
+    const uint32_t pulse_high = (3 * arr / 4) - 1;
+    const uint32_t pulse_low = (1 * arr / 4) - 1;
+
+    DBG_PIN_DATA_FILL_HIGH;
+    if (ledx < LED_CFG_COUNT) {
+        uint32_t r, g, b;
+
+        led_fill_counter_arr[led_fill_counter++] = ledx;
+
+        r = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 0] * (uint32_t)brightness) / (uint32_t)0xFF);
+        g = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 1] * (uint32_t)brightness) / (uint32_t)0xFF);
+        b = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 2] * (uint32_t)brightness) / (uint32_t)0xFF);
+        for (size_t i = 0; i < 8; i++) {
+            ptr[i] =        (g & (1 << (7 - i))) ? pulse_high : pulse_low;
+            ptr[8 + i] =    (r & (1 << (7 - i))) ? pulse_high : pulse_low;
+            ptr[16 + i] =   (b & (1 << (7 - i))) ? pulse_high : pulse_low;
+        }
+    }
+    DBG_PIN_DATA_FILL_LOW;
+}
+
+/**
+ * \brief           Start with transfer process to update LED on the strip
+ * \return          `1` if transfer has started, `0` otherwise
+ */
+static uint8_t
+led_start_transfer(void) {
+    if (is_updating) {
+        return 0;
+    }
+
+    /* Set initial values */
+    is_updating = 1;
+    led_cycles_cnt = LED_CFG_LEDS_PER_DMA_IRQ;
+
+    /*
+     * At the very beginning we should prepare data for full array length
+     *
+     * 2 steps are done
+     * - Reset buffer to zero, for reset pulse (all zeros)
+     * - Manually set data for first round, in case reset lenght is set lower than size of array
+     */
+    memset(dma_buffer, 0x00, sizeof(dma_buffer));
+    for (uint32_t i = 0, index = LED_RESET_PRE_MIN_LED_CYCLES; index < 2 * LED_CFG_LEDS_PER_DMA_IRQ; ++index, ++i) {
+        led_fill_led_pwm_data(i, &dma_buffer[index * DMA_BUFF_ELE_LED_LEN]);
+    }
+
+    /*
+     * This is where DMA gets configured for data transfer
+     *
+     * - Circular mode, continuous transmission
+     * - Memory length (number of elements) for 2 LEDs of data
+     */
+    LL_DMA_SetMode(DMA2, LL_DMA_CHANNEL_5, LL_DMA_MODE_CIRCULAR);
+    LL_DMA_SetMemoryAddress(DMA2, LL_DMA_CHANNEL_5, (uint32_t)dma_buffer);
+    LL_DMA_SetDataLength(DMA2, LL_DMA_CHANNEL_5, DMA_BUFF_ELE_LEN);
+
+    /* Clear flags, enable interrupts */
+    LL_DMA_ClearFlag_TC5(DMA2);
+    LL_DMA_ClearFlag_HT5(DMA2);
+    LL_DMA_EnableIT_TC(DMA2, LL_DMA_CHANNEL_5);
+    LL_DMA_EnableIT_HT(DMA2, LL_DMA_CHANNEL_5);
+
+    /* Enable DMA, TIM channel and TIM counter */
+    LL_DMA_EnableChannel(DMA2, LL_DMA_CHANNEL_5);
+    LL_TIM_CC_EnableChannel(TIM2, LL_TIM_CHANNEL_CH4);
+    LL_TIM_EnableCounter(TIM2);
+
+    DBG_PIN_UPDATING_HIGH;
+
+    /* All the rest is happening in DMA interrupt from now on */
+    return 1;
 }
 
 /**
@@ -205,6 +463,32 @@ tim2_init(void) {
 }
 
 /**
+ * \brief           Initialize debug GPIOs
+ */
+static void
+gpio_init(void) {
+    LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    /* Peripheral clock enable */
+    LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA);
+
+    /*
+     * GPIO configuration
+     *
+     * PA0   ------> Pin set to high when transmission is on-going
+     * PA1   ------> Pin toggled on each DMA interrupt
+     * PA4   ------> Pin toggled when LED data are being prepared already before DMA run
+     * PA5   ------> Pin toggled when LED data are being prepared in interrupt when values are not-aligned
+     */
+    GPIO_InitStruct.Pin = LL_GPIO_PIN_0 | LL_GPIO_PIN_1 | LL_GPIO_PIN_2 | LL_GPIO_PIN_4 | LL_GPIO_PIN_5;
+    GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+    GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+    GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+    LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+}
+
+/**
  * \brief           This function handles System tick timer
  */
 void
@@ -246,151 +530,10 @@ SysTick_Handler(void) {
 }
 
 /**
- * \brief           Prepares data from memory for PWM output for timer
- * \note            Memory is in format R,G,B, while PWM must be configured in G,R,B[,W]
- * \param[in]       ledx: LED index to set the color
- * \param[out]      ptr: Output array with at least LED_CFG_RAW_BYTES_PER_LED-words of memory
- */
-static void
-led_fill_led_pwm_data(size_t ledx, uint32_t* ptr) {
-    const uint32_t arr = TIM2->ARR + 1;
-    const uint32_t pulse_high = (3 * arr / 4) - 1;
-    const uint32_t pulse_low = (1 * arr / 4) - 1;
-
-    if (ledx < LED_CFG_COUNT) {
-        uint32_t r, g, b;
-
-        r = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 0] * (uint32_t)brightness) / (uint32_t)0xFF);
-        g = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 1] * (uint32_t)brightness) / (uint32_t)0xFF);
-        b = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 2] * (uint32_t)brightness) / (uint32_t)0xFF);
-        for (size_t i = 0; i < 8; i++) {
-            ptr[i] =        (g & (1 << (7 - i))) ? pulse_high : pulse_low;
-            ptr[8 + i] =    (r & (1 << (7 - i))) ? pulse_high : pulse_low;
-            ptr[16 + i] =   (b & (1 << (7 - i))) ? pulse_high : pulse_low;
-        }
-    }
-}
-
-/**
- * \brief           Start with transfer process to update LED on the strip
- * \return          `1` if transfer has started, `0` otherwise
- */
-static uint8_t
-led_start_transfer(void) {
-    if (is_updating) {
-        return 0;
-    }
-
-    /* Set initial values */
-    is_updating = 1;
-    irq_count = 1;
-
-    /* Set all bytes to 0 to achieve start reset pulse = all low */
-    memset(dma_raw_buffer, 0, sizeof(dma_raw_buffer));
-
-    /*
-     * This is where DMA gets configured for data transfer
-     *
-     * - Circular mode, continuous transmission
-     * - Memory length (number of elements) for 2 LEDs of data
-     */
-    LL_DMA_SetMode(DMA2, LL_DMA_CHANNEL_5, LL_DMA_MODE_CIRCULAR);
-    LL_DMA_SetMemoryAddress(DMA2, LL_DMA_CHANNEL_5, (uint32_t)dma_raw_buffer);
-    LL_DMA_SetDataLength(DMA2, LL_DMA_CHANNEL_5, sizeof(dma_raw_buffer) / sizeof(dma_raw_buffer[0]));
-
-    /* Clear flags, enable interrupts */
-    LL_DMA_ClearFlag_TC5(DMA2);
-    LL_DMA_ClearFlag_HT5(DMA2);
-    LL_DMA_EnableIT_TC(DMA2, LL_DMA_CHANNEL_5);
-    LL_DMA_EnableIT_HT(DMA2, LL_DMA_CHANNEL_5);
-
-    /* Enable DMA, TIM channel and TIM counter */
-    LL_DMA_EnableChannel(DMA2, LL_DMA_CHANNEL_5);
-    LL_TIM_CC_EnableChannel(TIM2, LL_TIM_CHANNEL_CH4);
-    LL_TIM_EnableCounter(TIM2);
-
-    /* All the rest is happening in DMA interrupt from now on */
-    return 1;
-}
-
-/**
- * \brief           Update sequence function,
- *                  called on each DMA transfer complete or half-transfer complete events
- * \param[in]       tc: Set to `1` when function is called from DMA TC event, `0` when from HT event
- */
-static void
-led_update_sequence(uint8_t tc) {
-    if (!is_updating) {
-        return;
-    }
-
-    /*
-     * This function is called every time number of elements corresponds 1 LED of data,
-     * usually 24-elements (connected to 3x 8-bits of data).
-     *
-     * Each time we increase irq_count variable,
-     * which indicates how many times we transfered data in size of 1-LED (usually 24-elements)
-     */
-    irq_count++;
-
-    if (irq_count < LED_RESET_PRE_MIN_IRQ_COUNT) {
-        /*
-         * This mode is used to reset initial all-zero pulses to achieve reset length
-         * 
-         * Do nothing for few periods, keep line low for min time
-         */
-    } else if (irq_count < (LED_RESET_PRE_MIN_IRQ_COUNT + LED_CFG_COUNT)) {
-        /*
-         * This is where data gets prepared for LED and transmitted
-         * after the next interrupt/function call
-         */
-        uint32_t next_led = irq_count - LED_RESET_PRE_MIN_IRQ_COUNT;
-        led_fill_led_pwm_data(next_led, &dma_raw_buffer[tc ? LED_CFG_BYTES_PER_LED_RAW : 0]);
-    } else if (irq_count < (LED_RESET_PRE_MIN_IRQ_COUNT + LED_CFG_COUNT + LED_RESET_POST_MIN_IRQ_COUNT)) {
-        /*
-         * This is post-reset circuitry and must be set to at least 1 level in size
-         *
-         * It sends all-zero to the all leds
-         */
-        memset(&dma_raw_buffer[tc ? LED_CFG_BYTES_PER_LED_RAW : 0], 0x00, sizeof(dma_raw_buffer) >> 1);
-    } else {
-        /*
-         * We are now ready to stop DMA and TIM channel,
-         * otherwise transfers will continue to occur (circular mode).
-         *
-         * Disable interrupts prior disabling DMA transfer.
-         *
-         * Some STM32 (F2, F4, F7) may generate TC or HT interrupts when DMA is manually disabled,
-         * and since it is not necessary to receive these interrupts from now-on,
-         * it's better to simply disable them
-         */
-        LL_DMA_DisableIT_TC(DMA2, LL_DMA_CHANNEL_5);
-        LL_DMA_DisableIT_HT(DMA2, LL_DMA_CHANNEL_5);
-        LL_DMA_DisableChannel(DMA2, LL_DMA_CHANNEL_5);
-        LL_TIM_CC_DisableChannel(TIM2, LL_TIM_CHANNEL_CH4);
-        is_updating = 0;
-    }
-}
-
-/**
- * \brief           DMA2 channel 5 interrupt handler
- */
-void
-DMA1_Ch4_7_DMA2_Ch1_5_DMAMUX1_OVR_IRQHandler(void) {
-    if (LL_DMA_IsEnabledIT_HT(DMA2, LL_DMA_CHANNEL_5) && LL_DMA_IsActiveFlag_HT5(DMA2)) {
-        LL_DMA_ClearFlag_HT5(DMA2);
-        led_update_sequence(0);
-    }
-    if (LL_DMA_IsEnabledIT_TC(DMA2, LL_DMA_CHANNEL_5) && LL_DMA_IsActiveFlag_TC5(DMA2)) {
-        LL_DMA_ClearFlag_TC5(DMA2);
-        led_update_sequence(1);
-    }
-}
-
-/**
  * \brief           System Clock Configuration
  */
-void SystemClock_Config(void) {
+void
+SystemClock_Config(void) {
     LL_FLASH_SetLatency(LL_FLASH_LATENCY_2);
     while (LL_FLASH_GetLatency() != LL_FLASH_LATENCY_2) {}
 
