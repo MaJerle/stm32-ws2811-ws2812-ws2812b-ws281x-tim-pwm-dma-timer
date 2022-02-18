@@ -13,7 +13,7 @@
             "servertype": "stlink",
             "device": "STM32G0B1RE",            //MCU used, ex. "STM32H735IG"
             "interface": "swd",
-            "serialNumber": "", //Set ST-Link ID if you use multiple at the same time
+            "serialNumber": "066EFF515754888367185430", //Set ST-Link ID if you use multiple at the same time
             "runToEntryPoint": "main",
             "svdFile": "",      //Path to SVD file to see registers
             "v1": false,

@@ -9,43 +9,49 @@
 #define ARRAYSIZE(x)                    (sizeof(x) / sizeof((x)[0]))
 
 /**
- * \brief           Number of LEDs (or LED drivers in case of WS2811) connected to strip
+ * \brief           Number of LEDs (or LED drivers in case of WS2811) connected to single strip in a row
  *
- * Set this value for your use case
+ * This value should be set to your defined length
  */
 #define LED_CFG_COUNT                           10
 
 /**
  * \brief           Number of bytes for one LED color description
+ * \note            Set to `3` for RGB, or set to `4` for RGBW use case
  */
 #define LED_CFG_BYTES_PER_LED                   3
 
 /**
- * \brief           Defines how many times is "1-led-transmission-time" sent before DMA TC or HT interrupts are triggered
+ * \brief           Defines size of raw transmission leds in units of "data-for-leds"
+ * \note            `1 unit` represents `30us` at `800 kHz and 24-bit of LED data (RGB)`
+ *                      or `40us` at ˙800 kHz and 32-bit of LED data (RGBW)`
  * 
- * \note            `1 unit` represents `30us` at `800 kHz and 24-bit of LED data`
- * 
- * This value defines:
- * - Greater it is, less frequent DMA interrupts get fired
- * - Greater it is, lower is the reset-sequence time granularity
- * - Greater it is, larger is the raw dma buffer as it has to accomodate for 2*value number of elements for led's data
+ * Based on the value:
+ * - Greater it is, less frequent are DMA interrupts, but interrupt handling takes potentially more time
+ * - Greater it is, larger is the raw dma buffer as it has to accomodate for `2*value` number of elements for led's data
  * 
  * \note            Values should be greater-or-equal than `1` and (advise) not higher than `8˙
- * 
- * \note            Value set to `6` means DMA TC or HT interrupts are triggered at each `180us at 800kHz tim update rate`
+ * \note            Value set to `6` means DMA TC or HT interrupts are triggered at each `180us at 800kHz tim update rate for RGB leds`
  */
-#define LED_CFG_LEDS_PER_DMA_IRQ                4
+#define LED_CFG_LEDS_PER_DMA_IRQ                1
 
 /**
  * \brief           Defines minimum number of "1-led-transmission-time" blocks
  *                  to send logical `0` to the bus, indicating reset before data transmission starts.
  * 
- * \note            Few conditions apply to the value, there must be AND match
- *                      - Must be multiplier of \ref LED_CFG_LEDS_PER_DMA_IRQ
- *                      - Must be greater than 0
- *                      - Must be set to a value to support minimum reset time, `300us`
+ * This is a must to generate reset value.
+ * As per datasheet, different devices require different min reset time, normally min `280us`,
+ * that represents minimum `10 led cycles`
+ * 
+ * \note            Few conditions apply to the value and all must be a pass
+ *                      - Must be greater than `0`
+ *                      - Must be set to a value to support minimum reset time required by the driver
+ * 
+ *                  Further advices
+ *                      - Set it to `2*LED_CFG_LEDS_PER_DMA_IRQ` or higher
+ *                      - Set it as multiplier of \ref LED_CFG_LEDS_PER_DMA_IRQ
  */
-#define LED_RESET_PRE_MIN_IRQ_COUNT             9
+#define LED_RESET_PRE_MIN_LED_CYCLES             10
 
 /**
  * \brief           Number of "1-led-transmission-time" units to send all zeros
@@ -53,10 +59,10 @@
  * \note            It indicates minimum required value, while actual may be longer
  *                  and it has to do with multipliers of \ref LED_CFG_LEDS_PER_DMA_IRQ
  */
-#define LED_RESET_POST_MIN_IRQ_COUNT            8
+#define LED_RESET_POST_MIN_LED_CYCLES            8
 
 /**
- * \brief           Application array to store led colors
+ * \brief           Application array to store led colors for application use case
  *                      Data in format R,G,B,R,G,B,... 
  * 
  * Array used by user application to store data to
@@ -75,15 +81,23 @@ static uint8_t leds_color_data[LED_CFG_BYTES_PER_LED * LED_CFG_COUNT];
  * Type of variable should be unsigned 32-bit, to satisfy TIM2 that is 32-bit timer
  */
 static uint32_t dma_buffer[(2) * (LED_CFG_LEDS_PER_DMA_IRQ) * (LED_CFG_BYTES_PER_LED * 8)];
+
+/* Used macros */
+
+/* Number of elements in raw DMA buffer array - used by DMA transfer length */
 #define DMA_BUFF_ELE_LEN                    ((uint32_t)(sizeof(dma_buffer) / sizeof((dma_buffer)[0])))
+/* Half number of elements in raw DMA buffer */
 #define DMA_BUFF_ELE_HALF_LEN               ((uint32_t)(DMA_BUFF_ELE_LEN >> 1))
+/* Size of (in bytes) half length of array -> used for memory set */
 #define DMA_BUFF_ELE_HALF_SIZEOF            ((size_t)(sizeof(dma_buffer[0]) * DMA_BUFF_ELE_HALF_LEN))
+/* Number of array indexes required for one led */
 #define DMA_BUFF_ELE_LED_LEN                ((uint32_t)(LED_CFG_BYTES_PER_LED * 8))
+/* Size of (in bytes) of one led memory in DMA buffer */
 #define DMA_BUFF_ELE_LED_SIZEOF             ((size_t)(sizeof(dma_buffer[0]) * DMA_BUFF_ELE_LED_LEN))
 
 /* Control variables for transfer */
 static volatile uint8_t     is_updating = 0;            /* Set to `1` when update is in progress */
-static volatile uint32_t    irq_count;                  /* Counts how many "1-led-time" have been transmitted so far */
+static volatile uint32_t    led_cycles_cnt;                  /* Counts how many "1-led-time" have been transmitted so far */
 static volatile uint8_t     brightness = 0xFF;          /* Brightness between 0 and 0xFF */
 static volatile uint32_t    color_counter = 1;          /* Color, being increased each fade reaching 0 */
 
@@ -155,9 +169,9 @@ main(void) {
 
     /* Set up the first leds with dummy color */
     for (size_t i = 0; i < LED_CFG_COUNT; ++i) {
-        leds_color_data[i * LED_CFG_BYTES_PER_LED + 0] = i % 2 == 0 ? 0xFF : 0x00;
-        leds_color_data[i * LED_CFG_BYTES_PER_LED + 1] = i % 2 == 0 ? 0xFF : 0x00;
-        leds_color_data[i * LED_CFG_BYTES_PER_LED + 2] = i % 2 == 0 ? 0xFF : 0x00;
+        leds_color_data[i * LED_CFG_BYTES_PER_LED + 0] = i & 1 ? 0xFF : 0x00;
+        leds_color_data[i * LED_CFG_BYTES_PER_LED + 1] = i & 2 ? 0xFF : 0x00;
+        leds_color_data[i * LED_CFG_BYTES_PER_LED + 2] = i & 4 ? 0xFF : 0x00;
     }
 
     /* Define fade init values */
@@ -185,41 +199,60 @@ main(void) {
 static void
 led_update_sequence(uint8_t tc) {
     DBG_PIN_IRQ_HIGH;
-    tc = !!tc;
+    tc = tc ? 1 : 0;
     if (!is_updating) {
         DBG_PIN_IRQ_LOW;
         return;
     }
 
     /*
-     * Each time this function gets called,
-     * this value indicates number of "1-led-time" sequences to be transmitted
+     * led_cycles_cnt variable represents minimum number of 
+     * led cycles that will be transmitted on the bus.
+     * 
+     * It is set to non-0 value after transfer and gets increased in each interrupt.
+     * 
+     * Interrupts are triggered (TC or HT) when DMA transfers `LED_CFG_LEDS_PER_DMA_IRQ` led cycles of data elements
      */
-    irq_count += LED_CFG_LEDS_PER_DMA_IRQ;
+    led_cycles_cnt += LED_CFG_LEDS_PER_DMA_IRQ;
 
-    if (irq_count < LED_RESET_PRE_MIN_IRQ_COUNT) {
-        /* We are still in reset sequence mode */
-        if ((irq_count + LED_CFG_LEDS_PER_DMA_IRQ) > LED_RESET_PRE_MIN_IRQ_COUNT) {
-            uint32_t index = LED_RESET_PRE_MIN_IRQ_COUNT - irq_count;
+    if (led_cycles_cnt < LED_RESET_PRE_MIN_LED_CYCLES) {
+#if LED_CFG_LEDS_PER_DMA_IRQ > 1
+        /*
+         * We are still in reset sequence for the moment.
+         *
+         * When LED_CFG_LEDS_PER_DMA_IRQ > 1
+         * and pre-reset led cycles is not aligned to LED_CFG_LEDS_PER_DMA_IRQ value,
+         * first leds need to be filled already at this stage
+         */
+        if ((led_cycles_cnt + LED_CFG_LEDS_PER_DMA_IRQ) > LED_RESET_PRE_MIN_LED_CYCLES) {
+            uint32_t index = LED_RESET_PRE_MIN_LED_CYCLES - led_cycles_cnt;
             /* We need to preload some values for some leds now */
             /* Otherwise we will miss some leds */
             for (uint32_t i = 0; index < LED_CFG_LEDS_PER_DMA_IRQ && i < LED_CFG_COUNT; ++index, ++i) {
                 led_fill_led_pwm_data(i, &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + (index % LED_CFG_LEDS_PER_DMA_IRQ) * DMA_BUFF_ELE_LED_LEN]);
             }
         }
-    } else if (irq_count < (LED_RESET_PRE_MIN_IRQ_COUNT + LED_CFG_COUNT)) {
+#endif /* LED_CFG_LEDS_PER_DMA_IRQ > 1 */
+    } else if (led_cycles_cnt < (LED_RESET_PRE_MIN_LED_CYCLES + LED_CFG_COUNT)) {
         /*
-         * This is where LED data gets prepared to be transmitted in the next cycle
+         * This is where we prepare data for next cycle only
          *
-         * It is important to have irq_count aligned with minimum reset cycle,
-         * or wrong LED is being used as data input
+         * next led is simply calculated by subtracting counter from reset cycle
+         * If reset is not aligned, it is important to handle first leds already in previous if statement,
+         * otherwise we will miss first x leds (where x depends on how much we are away from alignment)
          */
-        uint32_t next_led = irq_count - LED_RESET_PRE_MIN_IRQ_COUNT;
+        uint32_t next_led = led_cycles_cnt - LED_RESET_PRE_MIN_LED_CYCLES;
 #if LED_CFG_LEDS_PER_DMA_IRQ == 1
-        led_fill_led_pwm_data(next_led, &dma_buffer[tc * DMA_BUFF_ELE_LED_SIZEOF]);
+        led_fill_led_pwm_data(next_led, &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN]);
 #endif /* LED_CFG_LEDS_PER_DMA_IRQ == 1 */
 #if LED_CFG_LEDS_PER_DMA_IRQ > 1
         uint32_t counter = 0;
+        /*
+         * Fill buffer with led data
+         *
+         * If counter stops earlier than buffer ends (low number of leds or not aligned),
+         * fill remaining with all zeros to indicate post-reset signal
+         */
         for (; counter < LED_CFG_LEDS_PER_DMA_IRQ && next_led < LED_CFG_COUNT; ++counter, ++next_led) {
             led_fill_led_pwm_data(next_led, &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + counter * DMA_BUFF_ELE_LED_LEN]);
         }
@@ -227,13 +260,17 @@ led_update_sequence(uint8_t tc) {
             memset(&dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + counter * DMA_BUFF_ELE_LED_LEN], 0x00, (LED_CFG_LEDS_PER_DMA_IRQ - counter) * DMA_BUFF_ELE_LED_SIZEOF);
         }
 #endif /* LED_CFG_LEDS_PER_DMA_IRQ > 1 */
-    } else if (irq_count < (LED_RESET_PRE_MIN_IRQ_COUNT + LED_CFG_COUNT + LED_RESET_POST_MIN_IRQ_COUNT + LED_CFG_LEDS_PER_DMA_IRQ)) {
+    } else if (led_cycles_cnt < (LED_RESET_PRE_MIN_LED_CYCLES + LED_CFG_COUNT + LED_RESET_POST_MIN_LED_CYCLES + LED_CFG_LEDS_PER_DMA_IRQ)) {
         /*
-         * This is post-reset circuitry and must be set to at least 1 level in size
-         *
-         * It sends all-zero to the all leds
+         * This is post-reset and must be set to at least 1 level in size
+         * and sends all zeros to the leds.
+         * 
+         * Manually reset array to all zeros using memset, but only if it has not been set already
+         * (to not waste CPU resources for small MCUs)
          */
-        memset(&dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN], 0x00, DMA_BUFF_ELE_HALF_SIZEOF);
+        if (led_cycles_cnt < (LED_RESET_PRE_MIN_LED_CYCLES + LED_CFG_COUNT + 2 * LED_CFG_LEDS_PER_DMA_IRQ)) {   
+            memset(&dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN], 0x00, DMA_BUFF_ELE_HALF_SIZEOF);
+        }
     } else {
         /*
          * We are now ready to stop DMA and TIM channel,
@@ -312,20 +349,17 @@ led_start_transfer(void) {
 
     /* Set initial values */
     is_updating = 1;
-    irq_count = LED_CFG_LEDS_PER_DMA_IRQ;
-
-    /* Reset all bytes to 0 first, for reset pulse */
-    memset(dma_buffer, 0x00, sizeof(dma_buffer));
-
-    /* Test only */
-    memset(led_fill_counter_arr, 0x00, sizeof(led_fill_counter_arr));
-    led_fill_counter = 0;
+    led_cycles_cnt = LED_CFG_LEDS_PER_DMA_IRQ;
 
     /*
-     * When requested reset length is smaller than size of DMA buffer,
-     * we should fill the buffer at start
+     * At the very beginning we should prepare data for full array length
+     *
+     * 2 steps are done
+     * - Reset buffer to zero, for reset pulse (all zeros)
+     * - Manually set data for first round, in case reset lenght is set lower than size of array
      */
-    for (uint32_t i = 0, index = LED_RESET_PRE_MIN_IRQ_COUNT; index < 2 * LED_CFG_LEDS_PER_DMA_IRQ; ++index, ++i) {
+    memset(dma_buffer, 0x00, sizeof(dma_buffer));
+    for (uint32_t i = 0, index = LED_RESET_PRE_MIN_LED_CYCLES; index < 2 * LED_CFG_LEDS_PER_DMA_IRQ; ++index, ++i) {
         led_fill_led_pwm_data(i, &dma_buffer[index * DMA_BUFF_ELE_LED_LEN]);
     }
 
@@ -466,7 +500,7 @@ SysTick_Handler(void) {
         if (is_updating) {
             return;
         }
-#if 0
+
         /* Calculate fading efect */
         fade_value += fade_step;
         if (fade_value > 0xFF) {
@@ -489,7 +523,6 @@ SysTick_Handler(void) {
 
         /* Calculate new brightness */
         brightness = (uint8_t)(quad_calc((float)fade_value / (float)0xFF) * (float)0x3F);
-#endif
 
         /* Start data transfer in non-blocking mode */
         led_start_transfer();
