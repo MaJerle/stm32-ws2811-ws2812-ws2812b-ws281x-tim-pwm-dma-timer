@@ -25,11 +25,11 @@
  * \brief           Defines size of raw transmission leds in units of "data-for-leds"
  * \note            `1 unit` represents `30us` at `800 kHz and 24-bit of LED data (RGB)`
  *                      or `40us` at ˙800 kHz and 32-bit of LED data (RGBW)`
- *
+ * 
  * Based on the value:
  * - Greater it is, less frequent are DMA interrupts, but interrupt handling takes potentially more time
  * - Greater it is, larger is the raw dma buffer as it has to accomodate for `2*value` number of elements for led's data
- *
+ * 
  * \note            Values should be greater-or-equal than `1` and (advise) not higher than `8˙
  * \note            Value set to `6` means DMA TC or HT interrupts are triggered at each `180us at 800kHz tim update rate for RGB leds`
  */
@@ -38,15 +38,15 @@
 /**
  * \brief           Defines minimum number of "1-led-transmission-time" blocks
  *                  to send logical `0` to the bus, indicating reset before data transmission starts.
- *
+ * 
  * This is a must to generate reset value.
  * As per datasheet, different devices require different min reset time, normally min `280us`,
  * that represents minimum `10 led cycles`
- *
+ * 
  * \note            Few conditions apply to the value and all must be a pass
  *                      - Must be greater than `0`
  *                      - Must be set to a value to support minimum reset time required by the driver
- *
+ * 
  *                  Further advices
  *                      - Set it to `2*LED_CFG_LEDS_PER_DMA_IRQ` or higher
  *                      - Set it as multiplier of \ref LED_CFG_LEDS_PER_DMA_IRQ
@@ -63,8 +63,8 @@
 
 /**
  * \brief           Application array to store led colors for application use case
- *                      Data in format R,G,B,R,G,B,...
- *
+ *                      Data in format R,G,B,R,G,B,... 
+ * 
  * Array used by user application to store data to
  */
 static uint8_t leds_color_data[LED_CFG_BYTES_PER_LED * LED_CFG_COUNT];
@@ -72,12 +72,12 @@ static uint8_t leds_color_data[LED_CFG_BYTES_PER_LED * LED_CFG_COUNT];
 /**
  * \brief           This buffer acts as raw buffer for DMA to transfer data from memory to timer compare
  * \note            DMA must have access to this variable (memory location)
- *
+ * 
  * It is a multi-dimentional array:
  * - First part represents 2 parts, one before half-transfer, second after half-transfer complete
  * - Second part is number of LEDs to transmit before DMA HT/TC interrupts get fired
  * - Third part are entries for raw timer compare register to send logical 1 and 0 to the bus
- *
+ * 
  * Type of variable should be unsigned 32-bit, to satisfy TIM2 that is 32-bit timer
  */
 static uint32_t dma_buffer[(2) * (LED_CFG_LEDS_PER_DMA_IRQ) * (LED_CFG_BYTES_PER_LED * 8)];
@@ -206,11 +206,11 @@ led_update_sequence(uint8_t tc) {
     }
 
     /*
-     * led_cycles_cnt variable represents minimum number of
+     * led_cycles_cnt variable represents minimum number of 
      * led cycles that will be transmitted on the bus.
-     *
+     * 
      * It is set to non-0 value after transfer and gets increased in each interrupt.
-     *
+     * 
      * Interrupts are triggered (TC or HT) when DMA transfers `LED_CFG_LEDS_PER_DMA_IRQ` led cycles of data elements
      */
     led_cycles_cnt += LED_CFG_LEDS_PER_DMA_IRQ;
@@ -264,11 +264,11 @@ led_update_sequence(uint8_t tc) {
         /*
          * This is post-reset and must be set to at least 1 level in size
          * and sends all zeros to the leds.
-         *
+         * 
          * Manually reset array to all zeros using memset, but only if it has not been set already
          * (to not waste CPU resources for small MCUs)
          */
-        if (led_cycles_cnt < (LED_RESET_PRE_MIN_LED_CYCLES + LED_CFG_COUNT + 2 * LED_CFG_LEDS_PER_DMA_IRQ)) {
+        if (led_cycles_cnt < (LED_RESET_PRE_MIN_LED_CYCLES + LED_CFG_COUNT + 2 * LED_CFG_LEDS_PER_DMA_IRQ)) {   
             memset(&dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN], 0x00, DMA_BUFF_ELE_HALF_SIZEOF);
         }
     } else {
