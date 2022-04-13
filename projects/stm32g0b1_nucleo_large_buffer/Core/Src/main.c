@@ -13,7 +13,7 @@
  *
  * This value should be set to your defined length
  */
-#define LED_CFG_COUNT                           10
+#define LED_CFG_COUNT                           128
 
 /**
  * \brief           Number of bytes for one LED color description
@@ -33,7 +33,7 @@
  * \note            Values should be greater-or-equal than `1` and (advise) not higher than `8˙
  * \note            Value set to `6` means DMA TC or HT interrupts are triggered at each `180us at 800kHz tim update rate for RGB leds`
  */
-#define LED_CFG_LEDS_PER_DMA_IRQ                1
+#define LED_CFG_LEDS_PER_DMA_IRQ                16
 
 /**
  * \brief           Defines minimum number of "1-led-transmission-time" blocks
@@ -67,7 +67,7 @@
  * 
  * Array used by user application to store data to
  */
-static uint8_t leds_color_data[LED_CFG_BYTES_PER_LED * LED_CFG_COUNT];
+static uint32_t leds_color_data[LED_CFG_BYTES_PER_LED * LED_CFG_COUNT];
 
 /**
  * \brief           This buffer acts as raw buffer for DMA to transfer data from memory to timer compare
@@ -429,7 +429,7 @@ tim2_init(void) {
     LL_DMA_SetPeriphIncMode(DMA2, LL_DMA_CHANNEL_5, LL_DMA_PERIPH_NOINCREMENT);
     LL_DMA_SetMemoryIncMode(DMA2, LL_DMA_CHANNEL_5, LL_DMA_MEMORY_INCREMENT);
     LL_DMA_SetPeriphSize(DMA2, LL_DMA_CHANNEL_5, LL_DMA_PDATAALIGN_WORD);
-    LL_DMA_SetMemorySize(DMA2, LL_DMA_CHANNEL_5, LL_DMA_MDATAALIGN_WORD);
+    LL_DMA_SetMemorySize(DMA2, LL_DMA_CHANNEL_5, LL_DMA_PDATAALIGN_WORD);
     LL_DMA_SetPeriphAddress(DMA2, LL_DMA_CHANNEL_5, (uint32_t)&TIM2->CCR4);
 
     /* 
