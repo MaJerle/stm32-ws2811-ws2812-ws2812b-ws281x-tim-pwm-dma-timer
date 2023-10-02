@@ -1,7 +1,0 @@
-{
-    "files.associations": {
-        "debug.h": "c",
-        "main.h": "c",
-        "stm32g0xx_ll_dma.h": "c"
-    }
-}

@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
 
-message("Entering ${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt")
-
 #
 # Core project settings
 #
@@ -36,34 +34,32 @@ set(EXECUTABLE                      ${CMAKE_PROJECT_NAME})
 # Source files
 #
 set(src_core_src_SRCS 
-	${PROJ_PATH}/Core/Src/main.c
-	${PROJ_PATH}/Core/Src/stm32g0xx_it.c
-	${PROJ_PATH}/Core/Src/syscalls.c
-	${PROJ_PATH}/Core/Src/sysmem.c
-	${PROJ_PATH}/Core/Src/system_stm32g0xx.c
-	#${PROJ_PATH}/Core/Src/debug.c
-    )
+    ${PROJ_PATH}/Core/Src/main.c
+    ${PROJ_PATH}/Core/Src/stm32g0xx_it.c
+    ${PROJ_PATH}/Core/Src/syscalls.c
+    ${PROJ_PATH}/Core/Src/sysmem.c
+    ${PROJ_PATH}/Core/Src/system_stm32g0xx.c)
 
 set(src_core_startup_SRCS 
-	${PROJ_PATH}/Core/Startup/startup_stm32g0b1ketx.s)
+    ${PROJ_PATH}/Core/Startup/startup_stm32g0b1ketx.s)
 
 set(src_drivers_stm32g0xx_hal_driver_src_SRCS 
-	${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_dma.c
-	${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_exti.c
-	${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_gpio.c
-	${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_pwr.c
-	${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_rcc.c
-	${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_tim.c
-	${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_utils.c)
+    ${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_dma.c
+    ${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_exti.c
+    ${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_gpio.c
+    ${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_pwr.c
+    ${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_rcc.c
+    ${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_tim.c
+    ${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Src/stm32g0xx_ll_utils.c)
 
 #
 # Include directories
 #
 set(include_c_DIRS
     ${PROJ_PATH}/Core/Inc
-	${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Inc
-	${PROJ_PATH}/Drivers/CMSIS/Device/ST/STM32G0xx/Include
-	${PROJ_PATH}/Drivers/CMSIS/Include
+    ${PROJ_PATH}/Drivers/STM32G0xx_HAL_Driver/Inc
+    ${PROJ_PATH}/Drivers/CMSIS/Device/ST/STM32G0xx/Include
+    ${PROJ_PATH}/Drivers/CMSIS/Include
 )
 set(include_cxx_DIRS
     
@@ -77,21 +73,19 @@ set(include_asm_DIRS
 #
 set(symbols_c_SYMB
     "DEBUG"
-	"STM32G0B1xx"
-	"USE_FULL_LL_DRIVER"
-	"HSE_VALUE=8000000"
-	"HSE_STARTUP_TIMEOUT=100"
-	"LSE_STARTUP_TIMEOUT=5000"
-	"LSE_VALUE=32768"
-	"EXTERNAL_CLOCK_VALUE=48000"
-	"HSI_VALUE=16000000"
-	"LSI_VALUE=32000"
-	"VDD_VALUE=3300"
-	"PREFETCH_ENABLE=0"
-	"INSTRUCTION_CACHE_ENABLE=1"
-	"DATA_CACHE_ENABLE=1"
-    "LWPRINTF_IGNORE_USER_OPTS"
-    "LWRB_IGNORE_USER_OPTS"
+    "STM32G0B1xx"
+    "USE_FULL_LL_DRIVER"
+    "HSE_VALUE=8000000"
+    "HSE_STARTUP_TIMEOUT=100"
+    "LSE_STARTUP_TIMEOUT=5000"
+    "LSE_VALUE=32768"
+    "EXTERNAL_CLOCK_VALUE=48000"
+    "HSI_VALUE=16000000"
+    "LSI_VALUE=32000"
+    "VDD_VALUE=3300"
+    "PREFETCH_ENABLE=0"
+    "INSTRUCTION_CACHE_ENABLE=1"
+    "DATA_CACHE_ENABLE=1"
 )
 set(symbols_cxx_SYMB
     
@@ -113,9 +107,9 @@ link_directories(${EXECUTABLE} ${link_DIRS})
 # Executable files
 #
 add_executable(${EXECUTABLE} 
-	${src_core_src_SRCS}
-	${src_core_startup_SRCS}
-	${src_drivers_stm32g0xx_hal_driver_src_SRCS})
+    ${src_core_src_SRCS}
+    ${src_core_startup_SRCS}
+    ${src_drivers_stm32g0xx_hal_driver_src_SRCS})
 
 #
 # Add linked libraries for linker
@@ -186,7 +180,7 @@ target_compile_options(${EXECUTABLE} PRIVATE
 
 # Setup linker parameters
 target_link_options(${EXECUTABLE} PRIVATE
-    -T${MCU_LINKER_SCRIPT}${linker_script_SRC}
+    -T${linker_script_SRC}
     ${CPU_PARAMETERS}
     -Wl,-Map=${CMAKE_PROJECT_NAME}.map
     -u _printf_float              # STDIO float formatting support (remove if not used)
@@ -214,5 +208,3 @@ add_custom_command(TARGET ${EXECUTABLE} POST_BUILD
 add_custom_command(TARGET ${EXECUTABLE} POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${EXECUTABLE}> ${EXECUTABLE}.bin
 )
-
-message("Exiting ${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt")

@@ -1,25 +1,25 @@
 #include "main.h"
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 /**
  * \brief           Number of elements in statically allocated array
  */
-#define ARRAYSIZE(x)                    (sizeof(x) / sizeof((x)[0]))
+#define ARRAYSIZE(x)                  (sizeof(x) / sizeof((x)[0]))
 
 /**
  * \brief           Number of LEDs (or LED drivers in case of WS2811) connected to single strip in a row
  *
  * This value should be set to your defined length
  */
-#define LED_CFG_COUNT                           10
+#define LED_CFG_COUNT                 33
 
 /**
  * \brief           Number of bytes for one LED color description
  * \note            Set to `3` for RGB, or set to `4` for RGBW use case
  */
-#define LED_CFG_BYTES_PER_LED                   3
+#define LED_CFG_BYTES_PER_LED         3
 
 /**
  * \brief           Defines size of raw transmission leds in units of "data-for-leds"
@@ -33,7 +33,7 @@
  * \note            Values should be greater-or-equal than `1` and (advise) not higher than `8˙
  * \note            Value set to `6` means DMA TC or HT interrupts are triggered at each `180us at 800kHz tim update rate for RGB leds`
  */
-#define LED_CFG_LEDS_PER_DMA_IRQ                1
+#define LED_CFG_LEDS_PER_DMA_IRQ      4
 
 /**
  * \brief           Defines minimum number of "1-led-transmission-time" blocks
@@ -51,7 +51,7 @@
  *                      - Set it to `2*LED_CFG_LEDS_PER_DMA_IRQ` or higher
  *                      - Set it as multiplier of \ref LED_CFG_LEDS_PER_DMA_IRQ
  */
-#define LED_RESET_PRE_MIN_LED_CYCLES             10
+#define LED_RESET_PRE_MIN_LED_CYCLES  10
 
 /**
  * \brief           Number of "1-led-transmission-time" units to send all zeros
@@ -59,7 +59,7 @@
  * \note            It indicates minimum required value, while actual may be longer
  *                  and it has to do with multipliers of \ref LED_CFG_LEDS_PER_DMA_IRQ
  */
-#define LED_RESET_POST_MIN_LED_CYCLES            8
+#define LED_RESET_POST_MIN_LED_CYCLES 8
 
 /**
  * \brief           Application array to store led colors for application use case
@@ -85,44 +85,44 @@ static uint32_t dma_buffer[(2) * (LED_CFG_LEDS_PER_DMA_IRQ) * (LED_CFG_BYTES_PER
 /* Used macros */
 
 /* Number of elements in raw DMA buffer array - used by DMA transfer length */
-#define DMA_BUFF_ELE_LEN                    ((uint32_t)(sizeof(dma_buffer) / sizeof((dma_buffer)[0])))
+#define DMA_BUFF_ELE_LEN         ((uint32_t)(sizeof(dma_buffer) / sizeof((dma_buffer)[0])))
 /* Half number of elements in raw DMA buffer */
-#define DMA_BUFF_ELE_HALF_LEN               ((uint32_t)(DMA_BUFF_ELE_LEN >> 1))
+#define DMA_BUFF_ELE_HALF_LEN    ((uint32_t)(DMA_BUFF_ELE_LEN >> 1))
 /* Size of (in bytes) half length of array -> used for memory set */
-#define DMA_BUFF_ELE_HALF_SIZEOF            ((size_t)(sizeof(dma_buffer[0]) * DMA_BUFF_ELE_HALF_LEN))
+#define DMA_BUFF_ELE_HALF_SIZEOF ((size_t)(sizeof(dma_buffer[0]) * DMA_BUFF_ELE_HALF_LEN))
 /* Number of array indexes required for one led */
-#define DMA_BUFF_ELE_LED_LEN                ((uint32_t)(LED_CFG_BYTES_PER_LED * 8))
+#define DMA_BUFF_ELE_LED_LEN     ((uint32_t)(LED_CFG_BYTES_PER_LED * 8))
 /* Size of (in bytes) of one led memory in DMA buffer */
-#define DMA_BUFF_ELE_LED_SIZEOF             ((size_t)(sizeof(dma_buffer[0]) * DMA_BUFF_ELE_LED_LEN))
+#define DMA_BUFF_ELE_LED_SIZEOF  ((size_t)(sizeof(dma_buffer[0]) * DMA_BUFF_ELE_LED_LEN))
 
 /* Control variables for transfer */
-static volatile uint8_t     is_updating = 0;            /* Set to `1` when update is in progress */
-static volatile uint32_t    led_cycles_cnt;                  /* Counts how many "1-led-time" have been transmitted so far */
-static volatile uint8_t     brightness = 0xFF;          /* Brightness between 0 and 0xFF */
-static volatile uint32_t    color_counter = 1;          /* Color, being increased each fade reaching 0 */
+static volatile uint8_t is_updating = 0;    /* Set to `1` when update is in progress */
+static volatile uint32_t led_cycles_cnt;    /* Counts how many "1-led-time" have been transmitted so far */
+static volatile uint8_t brightness = 0xFF;  /* Brightness between 0 and 0xFF */
+static volatile uint32_t color_counter = 1; /* Color, being increased each fade reaching 0 */
 
 /* Application variables for fading effect */
-int8_t      fade_step;
-int16_t     fade_value;
+int8_t fade_step;
+int16_t fade_value;
 
 /* Start data transfer */
-static uint8_t  led_start_transfer(void);
-void            SystemClock_Config(void);
-static void     tim2_init(void);
-static void     gpio_init(void);
-static void     led_fill_led_pwm_data(size_t ledx, uint32_t* ptr);
+static uint8_t led_start_transfer(void);
+void SystemClock_Config(void);
+static void tim2_init(void);
+static void gpio_init(void);
+static void led_fill_led_pwm_data(size_t ledx, uint32_t* ptr);
 
 /* Test purpose only */
 static uint32_t led_fill_counter;
 static uint16_t led_fill_counter_arr[LED_CFG_COUNT * 2];
 
 /* Debug control pins */
-#define DBG_PIN_UPDATING_HIGH                   LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_0)
-#define DBG_PIN_UPDATING_LOW                    LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_0)
-#define DBG_PIN_IRQ_HIGH                        LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_1)
-#define DBG_PIN_IRQ_LOW                         LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1)
-#define DBG_PIN_DATA_FILL_HIGH                  LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_4)
-#define DBG_PIN_DATA_FILL_LOW                   LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_4)
+#define DBG_PIN_UPDATING_HIGH  LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_0)
+#define DBG_PIN_UPDATING_LOW   LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_0)
+#define DBG_PIN_IRQ_HIGH       LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_1)
+#define DBG_PIN_IRQ_LOW        LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1)
+#define DBG_PIN_DATA_FILL_HIGH LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_4)
+#define DBG_PIN_DATA_FILL_LOW  LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_4)
 
 /**
  * \brief           Calculate Bezier curve (ease-in, ease-out) for input value
@@ -169,9 +169,9 @@ main(void) {
 
     /* Set up the first leds with dummy color */
     for (size_t i = 0; i < LED_CFG_COUNT; ++i) {
-        leds_color_data[i * LED_CFG_BYTES_PER_LED + 0] = i & 1 ? 0xFF : 0x00;
-        leds_color_data[i * LED_CFG_BYTES_PER_LED + 1] = i & 2 ? 0xFF : 0x00;
-        leds_color_data[i * LED_CFG_BYTES_PER_LED + 2] = i & 4 ? 0xFF : 0x00;
+        leds_color_data[i * LED_CFG_BYTES_PER_LED + 0] = 0x00;
+        leds_color_data[i * LED_CFG_BYTES_PER_LED + 1] = 0x00;
+        leds_color_data[i * LED_CFG_BYTES_PER_LED + 2] = 0x01;
     }
 
     /* Define fade init values */
@@ -229,7 +229,8 @@ led_update_sequence(uint8_t tc) {
             /* We need to preload some values for some leds now */
             /* Otherwise we will miss some leds */
             for (uint32_t i = 0; index < LED_CFG_LEDS_PER_DMA_IRQ && i < LED_CFG_COUNT; ++index, ++i) {
-                led_fill_led_pwm_data(i, &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + (index % LED_CFG_LEDS_PER_DMA_IRQ) * DMA_BUFF_ELE_LED_LEN]);
+                led_fill_led_pwm_data(i, &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN
+                                                     + (index % LED_CFG_LEDS_PER_DMA_IRQ) * DMA_BUFF_ELE_LED_LEN]);
             }
         }
 #endif /* LED_CFG_LEDS_PER_DMA_IRQ > 1 */
@@ -257,10 +258,12 @@ led_update_sequence(uint8_t tc) {
             led_fill_led_pwm_data(next_led, &dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + counter * DMA_BUFF_ELE_LED_LEN]);
         }
         if (counter < LED_CFG_LEDS_PER_DMA_IRQ) {
-            memset(&dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + counter * DMA_BUFF_ELE_LED_LEN], 0x00, (LED_CFG_LEDS_PER_DMA_IRQ - counter) * DMA_BUFF_ELE_LED_SIZEOF);
+            memset(&dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN + counter * DMA_BUFF_ELE_LED_LEN], 0x00,
+                   (LED_CFG_LEDS_PER_DMA_IRQ - counter) * DMA_BUFF_ELE_LED_SIZEOF);
         }
 #endif /* LED_CFG_LEDS_PER_DMA_IRQ > 1 */
-    } else if (led_cycles_cnt < (LED_RESET_PRE_MIN_LED_CYCLES + LED_CFG_COUNT + LED_RESET_POST_MIN_LED_CYCLES + LED_CFG_LEDS_PER_DMA_IRQ)) {
+    } else if (led_cycles_cnt < (LED_RESET_PRE_MIN_LED_CYCLES + LED_CFG_COUNT + LED_RESET_POST_MIN_LED_CYCLES
+                                 + LED_CFG_LEDS_PER_DMA_IRQ)) {
         /*
          * This is post-reset and must be set to at least 1 level in size
          * and sends all zeros to the leds.
@@ -268,7 +271,7 @@ led_update_sequence(uint8_t tc) {
          * Manually reset array to all zeros using memset, but only if it has not been set already
          * (to not waste CPU resources for small MCUs)
          */
-        if (led_cycles_cnt < (LED_RESET_PRE_MIN_LED_CYCLES + LED_CFG_COUNT + 2 * LED_CFG_LEDS_PER_DMA_IRQ)) {   
+        if (led_cycles_cnt < (LED_RESET_PRE_MIN_LED_CYCLES + LED_CFG_COUNT + 2 * LED_CFG_LEDS_PER_DMA_IRQ)) {
             memset(&dma_buffer[tc * DMA_BUFF_ELE_HALF_LEN], 0x00, DMA_BUFF_ELE_HALF_SIZEOF);
         }
     } else {
@@ -325,13 +328,16 @@ led_fill_led_pwm_data(size_t ledx, uint32_t* ptr) {
 
         led_fill_counter_arr[led_fill_counter++] = ledx;
 
-        r = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 0] * (uint32_t)brightness) / (uint32_t)0xFF);
-        g = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 1] * (uint32_t)brightness) / (uint32_t)0xFF);
-        b = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 2] * (uint32_t)brightness) / (uint32_t)0xFF);
+        r = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 0] * (uint32_t)brightness)
+                      / (uint32_t)0xFF);
+        g = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 1] * (uint32_t)brightness)
+                      / (uint32_t)0xFF);
+        b = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 2] * (uint32_t)brightness)
+                      / (uint32_t)0xFF);
         for (size_t i = 0; i < 8; i++) {
-            ptr[i] =        (g & (1 << (7 - i))) ? pulse_high : pulse_low;
-            ptr[8 + i] =    (r & (1 << (7 - i))) ? pulse_high : pulse_low;
-            ptr[16 + i] =   (b & (1 << (7 - i))) ? pulse_high : pulse_low;
+            ptr[i] = (g & (1 << (7 - i))) ? pulse_high : pulse_low;
+            ptr[8 + i] = (r & (1 << (7 - i))) ? pulse_high : pulse_low;
+            ptr[16 + i] = (b & (1 << (7 - i))) ? pulse_high : pulse_low;
         }
     }
     DBG_PIN_DATA_FILL_LOW;
@@ -480,7 +486,7 @@ gpio_init(void) {
      * PA4   ------> Pin toggled when LED data are being prepared already before DMA run
      * PA5   ------> Pin toggled when LED data are being prepared in interrupt when values are not-aligned
      */
-    GPIO_InitStruct.Pin = LL_GPIO_PIN_0 | LL_GPIO_PIN_1 | LL_GPIO_PIN_2 | LL_GPIO_PIN_4 | LL_GPIO_PIN_5;
+    GPIO_InitStruct.Pin = LL_GPIO_PIN_0 | LL_GPIO_PIN_1 | LL_GPIO_PIN_4 | LL_GPIO_PIN_5;
     GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
     GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
     GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
@@ -501,6 +507,7 @@ SysTick_Handler(void) {
             return;
         }
 
+#if 0
         /* Calculate fading efect */
         fade_value += fade_step;
         if (fade_value > 0xFF) {
@@ -523,6 +530,7 @@ SysTick_Handler(void) {
 
         /* Calculate new brightness */
         brightness = (uint8_t)(quad_calc((float)fade_value / (float)0xFF) * (float)0x3F);
+#endif
 
         /* Start data transfer in non-blocking mode */
         led_start_transfer();
@@ -572,7 +580,5 @@ SystemClock_Config(void) {
 void
 Error_Handler(void) {
     __disable_irq();
-    while (1) {
-
-    }
+    while (1) {}
 }
