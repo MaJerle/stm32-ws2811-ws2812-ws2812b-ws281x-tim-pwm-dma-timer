@@ -112,10 +112,6 @@ static void     tim2_init(void);
 static void     gpio_init(void);
 static void     led_fill_led_pwm_data(size_t ledx, uint32_t* ptr);
 
-/* Test purpose only */
-static uint32_t led_fill_counter;
-static uint16_t led_fill_counter_arr[LED_CFG_COUNT * 2];
-
 /* Debug control pins */
 #define DBG_PIN_UPDATING_HIGH                   LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_0)
 #define DBG_PIN_UPDATING_LOW                    LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_0)
@@ -322,8 +318,6 @@ led_fill_led_pwm_data(size_t ledx, uint32_t* ptr) {
     DBG_PIN_DATA_FILL_HIGH;
     if (ledx < LED_CFG_COUNT) {
         uint32_t r, g, b;
-
-        led_fill_counter_arr[led_fill_counter++] = ledx;
 
         r = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 0] * (uint32_t)brightness) / (uint32_t)0xFF);
         g = (uint8_t)(((uint32_t)leds_color_data[ledx * LED_CFG_BYTES_PER_LED + 1] * (uint32_t)brightness) / (uint32_t)0xFF);
