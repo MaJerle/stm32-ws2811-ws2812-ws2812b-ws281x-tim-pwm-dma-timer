@@ -95,6 +95,51 @@ static uint32_t dma_buffer[(2) * (LED_CFG_LEDS_PER_DMA_IRQ) * (LED_CFG_BYTES_PER
 /* Size of (in bytes) of one led memory in DMA buffer */
 #define DMA_BUFF_ELE_LED_SIZEOF  ((size_t)(sizeof(dma_buffer[0]) * DMA_BUFF_ELE_LED_LEN))
 
+/* Pin configuration goes here */
+#if 1
+#define LED_GPIO_PORT                             GPIOA
+#define LED_GPIO_PIN                              LL_GPIO_PIN_3
+#define LED_GPIO_CLK_EN                           LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA)
+#define LED_GPIO_PIN_TIM_AF                       LL_GPIO_AF_2
+#define LED_TIM                                   TIM2
+#define LED_TIM_CLK_EN                            LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2)
+#define LED_TIM_CHANNEL                           LL_TIM_CHANNEL_CH4
+#define LED_TIM_CHANNEL_DMA                       DMA2
+#define LED_TIM_CHANNEL_DMA_CLK_EN                LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_DMA2)
+#define LED_TIM_CHANNEL_DMA_CHANNEL               LL_DMA_CHANNEL_5
+#define LED_TIM_CHANNEL_DMA_CHANNEL_REQ           LL_DMAMUX_REQ_TIM2_CH4
+#define LED_TIM_CHANNEL_DATA_REG                  &LED_TIM->CCR4
+#define LED_TIM_CHANNEL_DMA_IRQn                  DMA1_Ch4_7_DMA2_Ch1_5_DMAMUX1_OVR_IRQn
+#define LED_TIM_CHANNEL_DMA_IRQHandler            DMA1_Ch4_7_DMA2_Ch1_5_DMAMUX1_OVR_IRQHandler
+#define LED_TIM_CHANNEL_DMA_CHANNEL_IS_ACTIVE_HT  LL_DMA_IsActiveFlag_HT5(LED_TIM_CHANNEL_DMA)
+#define LED_TIM_CHANNEL_DMA_CHANNEL_IS_ACTIVE_TC  LL_DMA_IsActiveFlag_TC5(LED_TIM_CHANNEL_DMA)
+#define LED_TIM_CHANNEL_DMA_CHANNEL_CLEAR_FLAG_HT LL_DMA_ClearFlag_HT5(LED_TIM_CHANNEL_DMA)
+#define LED_TIM_CHANNEL_DMA_CHANNEL_CLEAR_FLAG_TC LL_DMA_ClearFlag_TC5(LED_TIM_CHANNEL_DMA)
+#define LED_TIM_CHANNEL_ENABLE_DMA_REQ            LL_TIM_EnableDMAReq_CC4(LED_TIM)
+#define LED_TIM_CHANNEL_SET_COMPARE(val)          LL_TIM_OC_SetCompareCH4(LED_TIM, (val))
+#else
+#define LED_GPIO_PORT                             GPIOA
+#define LED_GPIO_PIN                              LL_GPIO_PIN_15
+#define LED_GPIO_CLK_EN                           LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA)
+#define LED_GPIO_PIN_TIM_AF                       LL_GPIO_AF_2
+#define LED_TIM                                   TIM2
+#define LED_TIM_CLK_EN                            LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2)
+#define LED_TIM_CHANNEL                           LL_TIM_CHANNEL_CH1
+#define LED_TIM_CHANNEL_DMA                       DMA2
+#define LED_TIM_CHANNEL_DMA_CLK_EN                LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_DMA2)
+#define LED_TIM_CHANNEL_DMA_CHANNEL               LL_DMA_CHANNEL_5
+#define LED_TIM_CHANNEL_DMA_CHANNEL_REQ           LL_DMAMUX_REQ_TIM2_CH1
+#define LED_TIM_CHANNEL_DATA_REG                  &LED_TIM->CCR1
+#define LED_TIM_CHANNEL_DMA_IRQn                  DMA1_Ch4_7_DMA2_Ch1_5_DMAMUX1_OVR_IRQn
+#define LED_TIM_CHANNEL_DMA_IRQHandler            DMA1_Ch4_7_DMA2_Ch1_5_DMAMUX1_OVR_IRQHandler
+#define LED_TIM_CHANNEL_DMA_CHANNEL_IS_ACTIVE_HT  LL_DMA_IsActiveFlag_HT5(LED_TIM_CHANNEL_DMA)
+#define LED_TIM_CHANNEL_DMA_CHANNEL_IS_ACTIVE_TC  LL_DMA_IsActiveFlag_TC5(LED_TIM_CHANNEL_DMA)
+#define LED_TIM_CHANNEL_DMA_CHANNEL_CLEAR_FLAG_HT LL_DMA_ClearFlag_HT5(LED_TIM_CHANNEL_DMA)
+#define LED_TIM_CHANNEL_DMA_CHANNEL_CLEAR_FLAG_TC LL_DMA_ClearFlag_TC5(LED_TIM_CHANNEL_DMA)
+#define LED_TIM_CHANNEL_ENABLE_DMA_REQ            LL_TIM_EnableDMAReq_CC1(LED_TIM)
+#define LED_TIM_CHANNEL_SET_COMPARE(val)          LL_TIM_OC_SetCompareCH1(LED_TIM, (val))
+#endif
+
 /* Control variables for transfer */
 static volatile uint8_t is_updating = 0;    /* Set to `1` when update is in progress */
 static volatile uint32_t led_cycles_cnt;    /* Counts how many "1-led-time" have been transmitted so far */
@@ -113,12 +158,21 @@ static void gpio_init(void);
 static void led_fill_led_pwm_data(size_t ledx, uint32_t* ptr);
 
 /* Debug control pins */
+#if 1
 #define DBG_PIN_UPDATING_HIGH  LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_0)
 #define DBG_PIN_UPDATING_LOW   LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_0)
 #define DBG_PIN_IRQ_HIGH       LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_1)
 #define DBG_PIN_IRQ_LOW        LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1)
 #define DBG_PIN_DATA_FILL_HIGH LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_4)
 #define DBG_PIN_DATA_FILL_LOW  LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_4)
+#else
+#define DBG_PIN_UPDATING_HIGH
+#define DBG_PIN_UPDATING_LOW
+#define DBG_PIN_IRQ_HIGH
+#define DBG_PIN_IRQ_LOW
+#define DBG_PIN_DATA_FILL_HIGH
+#define DBG_PIN_DATA_FILL_LOW
+#endif
 
 /**
  * \brief           Calculate Bezier curve (ease-in, ease-out) for input value
@@ -281,10 +335,10 @@ led_update_sequence(uint8_t tc) {
          * and since it is not necessary to receive these interrupts from now-on,
          * it's better to simply disable them
          */
-        LL_DMA_DisableIT_TC(DMA2, LL_DMA_CHANNEL_5);
-        LL_DMA_DisableIT_HT(DMA2, LL_DMA_CHANNEL_5);
-        LL_DMA_DisableChannel(DMA2, LL_DMA_CHANNEL_5);
-        LL_TIM_CC_DisableChannel(TIM2, LL_TIM_CHANNEL_CH4);
+        LL_DMA_DisableIT_TC(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL);
+        LL_DMA_DisableIT_HT(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL);
+        LL_DMA_DisableChannel(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL);
+        LL_TIM_CC_DisableChannel(LED_TIM, LED_TIM_CHANNEL);
         is_updating = 0;
         DBG_PIN_UPDATING_LOW;
     }
@@ -295,13 +349,15 @@ led_update_sequence(uint8_t tc) {
  * \brief           DMA2 channel 5 interrupt handler
  */
 void
-DMA1_Ch4_7_DMA2_Ch1_5_DMAMUX1_OVR_IRQHandler(void) {
-    if (LL_DMA_IsEnabledIT_HT(DMA2, LL_DMA_CHANNEL_5) && LL_DMA_IsActiveFlag_HT5(DMA2)) {
-        LL_DMA_ClearFlag_HT5(DMA2);
+LED_TIM_CHANNEL_DMA_IRQHandler(void) {
+    if (LL_DMA_IsEnabledIT_HT(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL)
+        && LED_TIM_CHANNEL_DMA_CHANNEL_IS_ACTIVE_HT) {
+        LED_TIM_CHANNEL_DMA_CHANNEL_CLEAR_FLAG_TC;
         led_update_sequence(0);
     }
-    if (LL_DMA_IsEnabledIT_TC(DMA2, LL_DMA_CHANNEL_5) && LL_DMA_IsActiveFlag_TC5(DMA2)) {
-        LL_DMA_ClearFlag_TC5(DMA2);
+    if (LL_DMA_IsEnabledIT_TC(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL)
+        && LED_TIM_CHANNEL_DMA_CHANNEL_IS_ACTIVE_TC) {
+        LED_TIM_CHANNEL_DMA_CHANNEL_CLEAR_FLAG_TC;
         led_update_sequence(1);
     }
 }
@@ -369,20 +425,20 @@ led_start_transfer(void) {
      * - Circular mode, continuous transmission
      * - Memory length (number of elements) for 2 LEDs of data
      */
-    LL_DMA_SetMode(DMA2, LL_DMA_CHANNEL_5, LL_DMA_MODE_CIRCULAR);
-    LL_DMA_SetMemoryAddress(DMA2, LL_DMA_CHANNEL_5, (uint32_t)dma_buffer);
-    LL_DMA_SetDataLength(DMA2, LL_DMA_CHANNEL_5, DMA_BUFF_ELE_LEN);
+    LL_DMA_SetMode(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL, LL_DMA_MODE_CIRCULAR);
+    LL_DMA_SetMemoryAddress(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL, (uint32_t)dma_buffer);
+    LL_DMA_SetDataLength(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL, DMA_BUFF_ELE_LEN);
 
     /* Clear flags, enable interrupts */
-    LL_DMA_ClearFlag_TC5(DMA2);
-    LL_DMA_ClearFlag_HT5(DMA2);
-    LL_DMA_EnableIT_TC(DMA2, LL_DMA_CHANNEL_5);
-    LL_DMA_EnableIT_HT(DMA2, LL_DMA_CHANNEL_5);
+    LL_DMA_ClearFlag_TC5(LED_TIM_CHANNEL_DMA);
+    LL_DMA_ClearFlag_HT5(LED_TIM_CHANNEL_DMA);
+    LL_DMA_EnableIT_TC(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL);
+    LL_DMA_EnableIT_HT(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL);
 
     /* Enable DMA, TIM channel and TIM counter */
-    LL_DMA_EnableChannel(DMA2, LL_DMA_CHANNEL_5);
-    LL_TIM_CC_EnableChannel(TIM2, LL_TIM_CHANNEL_CH4);
-    LL_TIM_EnableCounter(TIM2);
+    LL_DMA_EnableChannel(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL);
+    LL_TIM_CC_EnableChannel(LED_TIM, LED_TIM_CHANNEL);
+    LL_TIM_EnableCounter(LED_TIM);
 
     DBG_PIN_UPDATING_HIGH;
 
@@ -400,37 +456,38 @@ tim2_init(void) {
     LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
 
     /* Peripheral clock enable */
-    LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2);
-    LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_DMA2);
-    LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA);
+    LED_GPIO_CLK_EN;
+    LED_TIM_CLK_EN;
+    LED_TIM_CHANNEL_DMA_CLK_EN;
 
     /*
      * TIM2 GPIO Configuration
      *
      * PA3   ------> TIM2_CH4
      */
-    GPIO_InitStruct.Pin = LL_GPIO_PIN_3;
+    GPIO_InitStruct.Pin = LED_GPIO_PIN;
     GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
     GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
     GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
     GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
-    GPIO_InitStruct.Alternate = LL_GPIO_AF_2;
-    LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    GPIO_InitStruct.Alternate = LED_GPIO_PIN_TIM_AF;
+    LL_GPIO_Init(LED_GPIO_PORT, &GPIO_InitStruct);
 
     /* DMA interrupts */
-    NVIC_SetPriority(DMA1_Ch4_7_DMA2_Ch1_5_DMAMUX1_OVR_IRQn, 0);
-    NVIC_EnableIRQ(DMA1_Ch4_7_DMA2_Ch1_5_DMAMUX1_OVR_IRQn);
+    NVIC_SetPriority(LED_TIM_CHANNEL_DMA_IRQn, 0);
+    NVIC_EnableIRQ(LED_TIM_CHANNEL_DMA_IRQn);
 
     /* DMA setup */
-    LL_DMA_SetPeriphRequest(DMA2, LL_DMA_CHANNEL_5, LL_DMAMUX_REQ_TIM2_CH4);
-    LL_DMA_SetDataTransferDirection(DMA2, LL_DMA_CHANNEL_5, LL_DMA_DIRECTION_MEMORY_TO_PERIPH);
-    LL_DMA_SetChannelPriorityLevel(DMA2, LL_DMA_CHANNEL_5, LL_DMA_PRIORITY_MEDIUM);
-    LL_DMA_SetMode(DMA2, LL_DMA_CHANNEL_5, LL_DMA_MODE_CIRCULAR);
-    LL_DMA_SetPeriphIncMode(DMA2, LL_DMA_CHANNEL_5, LL_DMA_PERIPH_NOINCREMENT);
-    LL_DMA_SetMemoryIncMode(DMA2, LL_DMA_CHANNEL_5, LL_DMA_MEMORY_INCREMENT);
-    LL_DMA_SetPeriphSize(DMA2, LL_DMA_CHANNEL_5, LL_DMA_PDATAALIGN_WORD);
-    LL_DMA_SetMemorySize(DMA2, LL_DMA_CHANNEL_5, LL_DMA_MDATAALIGN_WORD);
-    LL_DMA_SetPeriphAddress(DMA2, LL_DMA_CHANNEL_5, (uint32_t)&TIM2->CCR4);
+    LL_DMA_SetPeriphRequest(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL, LED_TIM_CHANNEL_DMA_CHANNEL_REQ);
+    LL_DMA_SetDataTransferDirection(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL,
+                                    LL_DMA_DIRECTION_MEMORY_TO_PERIPH);
+    LL_DMA_SetChannelPriorityLevel(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL, LL_DMA_PRIORITY_MEDIUM);
+    LL_DMA_SetMode(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL, LL_DMA_MODE_CIRCULAR);
+    LL_DMA_SetPeriphIncMode(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL, LL_DMA_PERIPH_NOINCREMENT);
+    LL_DMA_SetMemoryIncMode(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL, LL_DMA_MEMORY_INCREMENT);
+    LL_DMA_SetPeriphSize(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL, LL_DMA_PDATAALIGN_WORD);
+    LL_DMA_SetMemorySize(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL, LL_DMA_MDATAALIGN_WORD);
+    LL_DMA_SetPeriphAddress(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL, (uint32_t)LED_TIM_CHANNEL_DATA_REG);
 
     /* 
      * Set basic timer settings
@@ -442,10 +499,10 @@ tim2_init(void) {
     TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
     TIM_InitStruct.Autoreload = 79;
     TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
-    LL_TIM_Init(TIM2, &TIM_InitStruct);
-    LL_TIM_EnableARRPreload(TIM2);
-    LL_TIM_SetTriggerOutput(TIM2, LL_TIM_TRGO_RESET);
-    LL_TIM_DisableMasterSlaveMode(TIM2);
+    LL_TIM_Init(LED_TIM, &TIM_InitStruct);
+    LL_TIM_EnableARRPreload(LED_TIM);
+    LL_TIM_SetTriggerOutput(LED_TIM, LL_TIM_TRGO_RESET);
+    LL_TIM_DisableMasterSlaveMode(LED_TIM);
 
     /* Channel settings */
     TIM_OC_InitStruct.OCMode = LL_TIM_OCMODE_PWM1;
@@ -453,13 +510,13 @@ tim2_init(void) {
     TIM_OC_InitStruct.OCNState = LL_TIM_OCSTATE_DISABLE;
     TIM_OC_InitStruct.CompareValue = 0;
     TIM_OC_InitStruct.OCPolarity = LL_TIM_OCPOLARITY_HIGH;
-    LL_TIM_OC_Init(TIM2, LL_TIM_CHANNEL_CH4, &TIM_OC_InitStruct);
-    LL_TIM_OC_DisableFast(TIM2, LL_TIM_CHANNEL_CH4);
-    LL_TIM_OC_EnablePreload(TIM2, LL_TIM_CHANNEL_CH4);
+    LL_TIM_OC_Init(LED_TIM, LED_TIM_CHANNEL, &TIM_OC_InitStruct);
+    LL_TIM_OC_DisableFast(LED_TIM, LED_TIM_CHANNEL);
+    LL_TIM_OC_EnablePreload(LED_TIM, LED_TIM_CHANNEL);
 
     /* Enable channel DMA requests */
-    LL_TIM_EnableDMAReq_CC4(TIM2);
-    LL_TIM_OC_SetCompareCH4(TIM2, 0);
+    LED_TIM_CHANNEL_ENABLE_DMA_REQ;
+    LED_TIM_CHANNEL_SET_COMPARE(0);
 }
 
 /**
