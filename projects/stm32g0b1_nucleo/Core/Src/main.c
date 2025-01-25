@@ -13,7 +13,7 @@
  *
  * This value should be set to your defined length
  */
-#define LED_CFG_COUNT                 33
+#define LED_CFG_COUNT                 20
 
 /**
  * \brief           Number of bytes for one LED color description
@@ -95,8 +95,10 @@ static uint32_t dma_buffer[(2) * (LED_CFG_LEDS_PER_DMA_IRQ) * (LED_CFG_BYTES_PER
 /* Size of (in bytes) of one led memory in DMA buffer */
 #define DMA_BUFF_ELE_LED_SIZEOF  ((size_t)(sizeof(dma_buffer[0]) * DMA_BUFF_ELE_LED_LEN))
 
+#define USE_DEBUG_PINS           0
+
 /* Pin configuration goes here */
-#if 1
+#if 0
 #define LED_GPIO_PORT                             GPIOA
 #define LED_GPIO_PIN                              LL_GPIO_PIN_3
 #define LED_GPIO_CLK_EN                           LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA)
@@ -158,7 +160,7 @@ static void gpio_init(void);
 static void led_fill_led_pwm_data(size_t ledx, uint32_t* ptr);
 
 /* Debug control pins */
-#if 1
+#if USE_DEBUG_PINS
 #define DBG_PIN_UPDATING_HIGH  LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_0)
 #define DBG_PIN_UPDATING_LOW   LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_0)
 #define DBG_PIN_IRQ_HIGH       LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_1)
@@ -225,7 +227,7 @@ main(void) {
     }
 
     /* Define fade init values */
-    fade_step = 0x02;
+    fade_step = 1;
     fade_value = 0;
 
     /* Enable systick interrupt generation */
@@ -352,7 +354,7 @@ void
 LED_TIM_CHANNEL_DMA_IRQHandler(void) {
     if (LL_DMA_IsEnabledIT_HT(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL)
         && LED_TIM_CHANNEL_DMA_CHANNEL_IS_ACTIVE_HT) {
-        LED_TIM_CHANNEL_DMA_CHANNEL_CLEAR_FLAG_TC;
+        LED_TIM_CHANNEL_DMA_CHANNEL_CLEAR_FLAG_HT;
         led_update_sequence(0);
     }
     if (LL_DMA_IsEnabledIT_TC(LED_TIM_CHANNEL_DMA, LED_TIM_CHANNEL_DMA_CHANNEL)
@@ -524,6 +526,7 @@ tim2_init(void) {
  */
 static void
 gpio_init(void) {
+#if USE_DEBUG_PINS
     LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
 
     /* Peripheral clock enable */
@@ -543,6 +546,7 @@ gpio_init(void) {
     GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
     GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
     LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+#endif /* USE_DEBUG_PINS */
 }
 
 /**
@@ -558,7 +562,6 @@ SysTick_Handler(void) {
             return;
         }
 
-#if 0
         /* Calculate fading efect */
         fade_value += fade_step;
         if (fade_value > 0xFF) {
@@ -581,7 +584,6 @@ SysTick_Handler(void) {
 
         /* Calculate new brightness */
         brightness = (uint8_t)(quad_calc((float)fade_value / (float)0xFF) * (float)0x3F);
-#endif
 
         /* Start data transfer in non-blocking mode */
         led_start_transfer();
